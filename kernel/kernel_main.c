@@ -39,8 +39,10 @@ void startup_kernel() {
 	terminal_initialize();
   keyboard_initialize();
 
-  //filesystem_initialize();
-  //tty_file_initialize();
+  kmalloc_init();
+  
+  filesystem_initialize();
+  tty_file_initialize();
   
   kprintf("\ninitializing interrupts. . .\n\n");
   
@@ -70,12 +72,15 @@ void kernel_main() {
   
   kprintf("sizeof(Task): %d\n", sizeof(Task));
   
-  //spawn_task(0, NULL, kcli_main);
+  spawn_task(0, NULL, kcli_main);
+  spawn_task(0, NULL, tty_file_thread);
+  
+  kprintf("k_totaltasks: %d\n", k_totaltasks);
   
   //paranoid check to ensure interrupts are now enabled
   asm("STI");
   
-  //test_kmalloc();
+  test_kmalloc();
 
   while (1) {
     //asm("PAUSE");

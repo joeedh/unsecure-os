@@ -6,8 +6,66 @@
 #include "../../task/task.h"
 #include "../../timer.h"
 
+#include "../keyboard/keyboard.h"
 #include "../fs/fs_interface.h"
 #include "../fs/fs_file.h"
+
+static unsigned char tty_buffer[25*80*8];
+static unsigned int cursor;
+static unsigned int head, tail;
+
+int tty_file_thread(int argc, char **argv) {
+  //int *nullptr = 0x1;
+  //*nullptr = 0x0; 
+  //kprintf(":%d\n", *nullptr);
+  
+  terminal_flush();
+  
+  while (1) {
+    short code = keyboard_poll(); //getchar_nowait();
+    
+    if (code > 0 && (code&128) == 0) {
+      //kprintf(" %x             %x\n", code & 127, get_raw_keycode(code) & 127);
+      //terminal_flush();
+    }
+    
+    if (code > 0 && !(code & 128)) {
+      char ch = code & 127;
+      
+      if (keyboard_isprint(ch) || ch == '\n' || ch == '\r' || ch == '\t') {
+        ch = keyboard_handle_case(ch);
+        
+        tty_buffer[head] = ch;
+        head = (head + 1) % sizeof(tty_buffer);
+        
+        terminal_putchar(((unsigned char)ch) & 127);
+        terminal_flush();
+      } else {
+        switch (ch) {
+          case KEY_LEFT:
+            terminal_move_cursor(-1);
+            break;
+          case KEY_RIGHT:
+            terminal_move_cursor(1);
+            break;
+          case KEY_ENTER:
+            break;
+          case KEY_DELETE:
+          case KEY_BACKSPACE:
+            break;
+        }
+      }
+      
+      //int ret = inb(0x3CC);
+      //kprintf("%d %x %d %d", ret, ret, ret & 1, ret & 128);
+      
+      terminal_reset_cursor();
+    }
+    
+    
+    //task_sleep(5);
+  }
+}
 
 static int tty_pread(BlockDeviceIF *device, int file, const char *buf, size_t bufsize, size_t fileoff) {
   return 0;
@@ -35,6 +93,9 @@ FSFile tty_file;
 void tty_file_initialize() {
   memset(&tty_iface, 0, sizeof(tty_iface));
   memset(&tty_file, 0, sizeof(tty_file));
+  memset(&tty_buffer, 00, sizeof(tty_buffer));
+  
+  tail = head = cursor = 0;
   
   tty_iface.flush = tty_flush;
   tty_iface.pread = tty_pread;

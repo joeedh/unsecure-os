@@ -18,7 +18,7 @@
 #define BLOCKIDX_TO_ADDR(addr)
 
 #define MEM_BASE (MEM_BITMAP_END+1024*32)
-#define MEM_END (MEM_BITMAP_END+1024*1024*512)
+#define MEM_END (MEM_BITMAP_END+1024*1024*400)
 #define MEM_SIZE (MEM_END-MEM_BASE)
 
 #define MAGIC_HEAD_CHECKSUM 45436334
@@ -220,6 +220,11 @@ int _kfree(void *vmem, char *file, int line) {
 
 int test_kmalloc() {
   kprintf("KMalloc test!\n");
+  
+  char *a = kmalloc(8);
+  kfree(a);
+  
+  kprintf("done\n");
   
   return 0;
 }

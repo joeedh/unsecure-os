@@ -227,7 +227,7 @@ void interrupts_initialize() {
   }
   
   //exception handlers
-  return;
+  //return;
   for (int i=0; i<7; i++) {
     unsigned short off1, off2;
     unsigned long off = (unsigned long)excptrs[i];

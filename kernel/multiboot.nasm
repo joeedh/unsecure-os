@@ -154,6 +154,9 @@ dd 0x0;
   mov eax, %2;
   push eax;
   
+  ;clear exceptions
+  fclex;
+  
   extern nconcat(_exc_handler, %1);
   call nconcat(_exc_handler, %1);
   

@@ -51,7 +51,10 @@ enum {
   KCTRL_KEYBOARD_ERROR=0xff
 };
 
-unsigned char scancode_set2[255];
+static unsigned char scancode_set2[255];
+static unsigned char asciimap[255];
+static unsigned char rev_scancode_set2[255];
+
 volatile unsigned char keypress[255];
 volatile unsigned int kb_modflag;
 volatile unsigned int kb_toggles;
@@ -63,6 +66,13 @@ volatile unsigned int kb_queue_a, kb_queue_b;
 static volatile unsigned int last_command = 0;
 
 #define KEYB_PORT 0x60
+
+short get_raw_keycode(short code) {
+  if (code < 0)
+    return code;
+  
+  return rev_scancode_set2[code & 127] | (code & 127);
+}
 
 void keyboard_send_command(int command) {
   last_command = command;
@@ -81,12 +91,24 @@ void _isr_handler1() {
     } else if (code == KCTRL_RESEND) {
       outb(KEYB_PORT, last_command);
       break;
+    } else if (code == 0x7f) {
+      //heh?
+      continue;
     }
     
     keyboard_handle_mods(code);
     keyboard_handle_toggles(code);
     
     volatile unsigned char ch = code & 127;
+    
+    //convert code to more ascii-like codepage
+    ch = scancode_set2[ch];
+    if (code & 128) {
+      code = ch | 128;
+    } else {
+      code = ch;
+    }
+    
     keypress[ch] = ch != code;
     
     kb_queue[kb_queue_b] = code;
@@ -172,6 +194,7 @@ short keyboard_poll() {
   }
   
   safe_exit(state);
+  
   //klock_unlock(&keyboard_lock);
   return -1;
 }
@@ -184,14 +207,27 @@ int kb_my_isprint(int c) {
   return isprint(c) || c == '\r' || c == '\n' || c == '\t' || c == ' ';
 }
 
+short keyboard_handle_case(short c) {
+  if (c < 0)
+    return c;
+  
+  c = tolower(c & 127) | (c & 128);
+  
+  if ((keyboard_get_modflag() & KMOD_SHIFT)) {
+    c = toupper(c & 127) | (c & 128);
+  }
+  
+  return c;
+}
+
 short getchar_nowait() {
   volatile short c = keyboard_poll();
   
-  if (c < 0 || !(c & 128) || !(kb_my_isprint(scancode_set2[c & 127]))) {
+  if (c < 0 || !(c & 128) || !(kb_my_isprint(c & 127))) {
     return -1;
   }
   
-  c = scancode_set2[(c & 127)];
+  c = c & 127;
   
   if (!(keyboard_get_modflag() & KMOD_SHIFT)) {
     c = tolower(c);
@@ -203,11 +239,11 @@ short getchar_nowait() {
 unsigned char getchar() {
   volatile short c = keyboard_poll();
   
-  while (c < 0 || !(c & 128) || !(kb_my_isprint(scancode_set2[c & 127]))) {
+  while (c < 0 || !(c & 128) || !(kb_my_isprint(c & 127))) {
     c = keyboard_poll();
   }
   
-  c = scancode_set2[(c & 127)];
+  c = c & 127;
   
   if (!(keyboard_get_modflag() & KMOD_SHIFT)) {
     c = tolower(c);
@@ -222,6 +258,8 @@ int irq_kb(unsigned int n) {
 }
 
 void keyboard_initialize() {
+  //initialize more ascii-friendly codepage
+
   //klock_init(&keyboard_lock);
   
   kb_queue_a = kb_queue_b = 0;
@@ -234,6 +272,11 @@ void keyboard_initialize() {
   
 #define O 5
 
+  //flag lower-case letters as used
+  //for (int i='a'; i<='z'; i++) {
+  //  scancode_set2[i] = 1;
+  //}
+  
   scancode_set2[43] = '\\';
   
   const char *line1 = "QWERTYUIOP[]";
@@ -261,6 +304,43 @@ void keyboard_initialize() {
   scancode_set2[15] = '\t';
   scancode_set2[28] = '\n';
   scancode_set2[57] = ' ';
+  
+  //return;
+  
+  for (int i=0; i<255; i++) {
+    if (scancode_set2[i])
+      asciimap[scancode_set2[i]] = 1;
+  }
+  
+  unsigned char bitmap[255];
+  memset(bitmap, 0, 255);
+  
+  for (int i=0; i<255; i++) {
+    //a reverse map
+    if (scancode_set2[i]) {
+      bitmap[scancode_set2[i]] = 1;
+    }
+  }
+  
+  //re-map overwritten codes
+  for (int i=0; i<127; i++) {
+    if (!scancode_set2[i]) {
+      
+      for (int j = 0; j<127; j++) {
+        int j2 = (i + j) % 127;
+        
+        if (bitmap[j2] == 0) {
+            scancode_set2[i] = j2;
+            bitmap[j2] = 1;
+            break;
+        }
+      }
+    }
+  }
+  
+  for (int i=1; i<127; i++) {
+    rev_scancode_set2[scancode_set2[i]] = i;
+  }
 }
 
 void keyboard_post_irq_enable() {
@@ -290,4 +370,15 @@ void keyboard_post_irq_enable() {
   kprintf("%d: got code: %x\n", count, code);
   lastcode = code;
   count = 0;
+}
+
+int keyboard_isprint(int chr) {
+  if (chr < 0) return 0;
+  
+  chr = chr & 127;
+  return asciimap[chr] && (chr < 'a' || chr > 'z');
+}
+
+int keyboard_toascii(int chr) {
+  return scancode_set2[chr];
 }

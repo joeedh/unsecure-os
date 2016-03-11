@@ -212,7 +212,68 @@ int terminal_get_cursor() {
   return 0;
 }
 
-int terminal_set_cursor(int row, int column) {
+int terminal_set_cursor(int x, int y) {
+  size_t index = XY2IDX(x, y);
+  //0x03BA
+  //0x03DA
+  //0x03Dx
+  
+  short iomode = inb(0x3CC);
+  short crt_addr = iomode & 128 ? 0x03B4 : 0x03D4;
+  short crt_data = iomode & 128 ? 0x03B5 : 0x03D5;
+  //short input_status = iomode & 1 ? 0x03BA : 0x03DA;
+
+  outb(crt_addr, 0xF);
+  outb(crt_data, index & 255);
+  
+  index = index >> 8;
+  
+  outb(crt_addr, 0xE);
+  outb(crt_data, index & 255);
+  
   return 0;
 }
 
+int terminal_reset_cursor() {
+  terminal_set_cursor(terminal_column, terminal_row);
+  return 0;
+}
+
+//#define XY2IDX(x, y) ((((y) + terminal_row_off) % VGA_HEIGHT)*VGA_WIDTH + (x));
+
+int terminal_move_cursor(int delta) {
+  //deliberately not using xy2idx here
+  int idx = terminal_row*VGA_WIDTH + terminal_column + delta;
+  while (idx < 0) {
+    idx += VGA_WIDTH*VGA_HEIGHT;
+  }
+  
+  idx = idx % (VGA_WIDTH*VGA_HEIGHT);
+  
+  int x = idx % VGA_WIDTH;
+  int y = idx / VGA_WIDTH;
+  
+  terminal_row = (size_t) y;
+  terminal_column = (size_t) x;
+  
+  terminal_reset_cursor();
+  
+  /*
+  while (delta > 0) {
+    int aoff = delta < 0 ? -delta : delta;
+    
+    terminal_column += delta;
+    
+    if (terminal_column < 0) {
+      delta += VGA_WIDTH;
+      terminal_column = VGA_WIDTH-1;
+    } else if (terminal_column >= VGA_WIDTH) {
+      delta -= VGA_WIDTH;
+      terminal_column = 0;
+    } else {
+      break;
+    }
+  }*/
+  
+  return 0;
+}

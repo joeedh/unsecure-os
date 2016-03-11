@@ -52,7 +52,6 @@ static unsigned int alloc_stack() {
     if (taskstacks[i] == 0) {
       unsigned int addr = MEM_STACK_BASE + MEM_STACK_INDV_SIZE*i;
       
-      kprintf("addr: %d %x\n", addr, addr);
       taskstacks[i] = addr;
       
       return addr;
@@ -118,8 +117,6 @@ void spawn_task(int argc, char **argv, int (*main)(int argc, char **argv)) {
   k_curtaskp->next = task;
 
   k_lasttaskp = k_curtaskp;
-  
-  kprintf("yay.  k_totaltasks: %d\n", k_totaltasks);
 
   unsigned int addr = alloc_stack();
   
@@ -133,8 +130,6 @@ void spawn_task(int argc, char **argv, int (*main)(int argc, char **argv)) {
 
   *stack-- = (unsigned int) argv;
   *stack-- = (unsigned int) argc;
-  
-  kprintf("stack: %x, entry: %x, stack minus entry: %x\n", addr, (unsigned int)main, ((int)stack)-((int)main));
   
   task->head = stack;
 

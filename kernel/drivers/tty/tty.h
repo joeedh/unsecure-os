@@ -16,7 +16,11 @@ void terminal_writestring(const unsigned char* data);
 void terminal_clear();
 void terminal_flush();
 
+int terminal_move_cursor(int delta);
 int terminal_get_cursor();
-int terminal_set_cursor(int row, int column);
+int terminal_set_cursor(int x, int y);
+
+//resets display cursor to internal x/y cursor
+int terminal_reset_cursor();
 
 #endif /* _TTY_H */

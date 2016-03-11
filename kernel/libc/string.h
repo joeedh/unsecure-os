@@ -51,6 +51,34 @@ static inline int smemcpy(unsigned short *c1, unsigned short *c2, size_t n) {
   return 0;
 }
 
+static inline int strcpy(const unsigned char *a, const unsigned char *b) {
+  unsigned char *c = (unsigned char*)a;
+  unsigned char *d = (unsigned char*)b;
+  
+  *c = *d = 0;
+  while (*c) {
+    *c++ = *d++;
+  }
+  *c = 0;
+  
+  return (unsigned int)(c - a) + 1;
+}
+
+
+static inline int strncpy(const unsigned char *a, const unsigned char *b, size_t b_size) {
+  unsigned char *c = (unsigned char*)a;
+  unsigned char *d = (unsigned char*)b;
+  unsigned int i=0;
+  
+  *c = *d = 0;
+  while (*c && i < b_size) {
+    *c++ = *d++;
+  }
+  *c = 0;
+  
+  return i;
+}
+
 static inline int memcpy(void *s1, void *s2, size_t n) {
   size_t i = n;
   unsigned char *c1 = (unsigned char*) s1;
@@ -85,5 +113,11 @@ static unsigned char *strrchr(const unsigned char *str, unsigned int character) 
   
   return last;
 }
+
+int toupper(int c);
+int tolower(int c);
+int isupper(int c);
+int islower(int c);
+int isprint(int c);
 
 #endif /* _STRING_H */
