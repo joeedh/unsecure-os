@@ -1,0 +1,293 @@
+#if !defined(__cplusplus)
+#include <stdbool.h> /* C doesn't have booleans by default. */
+#endif
+#include <stddef.h>
+#include <stdint.h>
+ 
+/* Check if the compiler thinks we are targeting the wrong operating system. */
+#if defined(__linux__)
+#error "You are not using a cross-compiler, you will most certainly run into trouble"
+#endif
+ 
+#include "../../libc/string.h"
+#include "keyboard.h"
+#include "../../io.h"
+#include "../../interrupts.h"
+#include "../../libc/libk.h"
+#include "../../libc/ctype.h"
+#include "../../drivers/tty/tty.h"
+#include "../../task/lock.h"
+
+/*
+typematic command byte:
+
+0-5: Repeat rate (00000b = 30 Hz, ..., 11111b = 2 Hz)
+5-7: Delay before keys repeat (00b = 250 ms, 01b = 500 ms, 10b = 750 ms, 11b = 1000 ms)
+7-8: Must be zero
+*/
+
+enum {
+  CMD_SET_TYPEMATIC_RATE = 0xF3,
+  CMD_ENABLE_SCANNING  = 0xF4,
+  CMD_RESTORE_DEFAULTS = 0xF6,
+  CMD_MAKE_RELEASE = 0xF9
+};
+
+//static Lock keyboard_lock;
+
+static int keyboard_handle_toggles(int c);
+static int keyboard_handle_mods(int c);
+
+enum {
+  KCTRL_ERROR=0,
+  KCTRL_BAT=0xaa,
+  KCTRL_ECHO=0xee,
+  KCTRL_REPLY=0xf1,
+  KCTRL_NOPASS=0xa4,
+  KCTRL_ACK=0xfa,
+  KCTRL_BATERROR=0xfc,
+  KCTRL_INTERN_ERROR=0xfd,
+  KCTRL_RESEND=0xfe,
+  KCTRL_KEYBOARD_ERROR=0xff
+};
+
+unsigned char scancode_set2[255];
+volatile unsigned char keypress[255];
+volatile unsigned int kb_modflag;
+volatile unsigned int kb_toggles;
+
+#define QUEUESIZE 1024
+static volatile unsigned char kb_queue[QUEUESIZE];
+volatile unsigned int kb_queue_a, kb_queue_b;
+
+static volatile unsigned int last_command = 0;
+
+#define KEYB_PORT 0x60
+
+void keyboard_send_command(int command) {
+  last_command = command;
+  outb(KEYB_PORT, command);
+}
+
+void _isr_handler1() {
+  volatile unsigned int state = safe_entry();
+  volatile unsigned char code=0, lastcode=0;
+  
+  do {
+    code = inb(KEYB_PORT);
+    
+    if (code == KCTRL_ACK) {
+      continue;
+    } else if (code == KCTRL_RESEND) {
+      outb(KEYB_PORT, last_command);
+      break;
+    }
+    
+    keyboard_handle_mods(code);
+    keyboard_handle_toggles(code);
+    
+    volatile unsigned char ch = code & 127;
+    keypress[ch] = ch != code;
+    
+    kb_queue[kb_queue_b] = code;
+    kb_queue_b = (kb_queue_b+1) & (QUEUESIZE-1);
+    lastcode = code;
+  } while (code != lastcode && kb_queue_b < QUEUESIZE-1);
+  
+  safe_exit(state);
+}
+
+static int keyboard_handle_mods(int c) {
+  volatile unsigned char c2 = c & 127;
+  volatile int flag = 0;
+  
+  switch (c2) {
+    case 29:
+      flag = KMOD_LEFT_CTRL;
+      break;
+    case 91:
+      flag = KMOD_LEFT_COMMAND;
+      break;
+    case 56:
+      flag = KMOD_LEFT_ALT;
+      break;
+    case 42:
+      flag = KMOD_LEFT_SHIFT;
+      break;
+    case 54:
+      flag = KMOD_RIGHT_SHIFT;
+      break;
+  }
+  
+  if (flag == 0) {
+    return 0;
+  }
+  
+  if (c & 128) {
+    kb_modflag &= ~flag;
+  } else {
+    kb_modflag |= flag;
+  }
+  
+  return 1;
+}
+
+
+static int keyboard_handle_toggles(int c) {
+  volatile char c2 = c & 127;
+  volatile int flag = 0;
+  
+  switch (c2) {
+    case 58:
+      flag = KTOG_CAPS;
+      break;
+    case 69:
+      flag = KTOG_NUMLOCK;
+      break;
+  }
+  
+  if (flag == 0) {
+    return 0;
+  }
+  
+  if (c & 128) {
+    kb_toggles ^= flag;
+  }
+  
+  return 1;
+}
+
+short keyboard_poll() {
+  //klock_lock(&keyboard_lock);
+  volatile unsigned int state = safe_entry();
+  
+  if (kb_queue_a != kb_queue_b) {
+    volatile short ret = kb_queue[kb_queue_a];
+    
+    kb_queue_a = (kb_queue_a+1) & (QUEUESIZE-1);
+    
+    safe_exit(state);
+    //klock_unlock(&keyboard_lock);
+    return ret;
+  }
+  
+  safe_exit(state);
+  //klock_unlock(&keyboard_lock);
+  return -1;
+}
+
+int keyboard_get_modflag() {
+  return kb_modflag ^ (kb_toggles & ((1<<4)|(1<<5)));
+}
+
+int kb_my_isprint(int c) {
+  return isprint(c) || c == '\r' || c == '\n' || c == '\t' || c == ' ';
+}
+
+short getchar_nowait() {
+  volatile short c = keyboard_poll();
+  
+  if (c < 0 || !(c & 128) || !(kb_my_isprint(scancode_set2[c & 127]))) {
+    return -1;
+  }
+  
+  c = scancode_set2[(c & 127)];
+  
+  if (!(keyboard_get_modflag() & KMOD_SHIFT)) {
+    c = tolower(c);
+  }
+  
+  return c;
+}
+
+unsigned char getchar() {
+  volatile short c = keyboard_poll();
+  
+  while (c < 0 || !(c & 128) || !(kb_my_isprint(scancode_set2[c & 127]))) {
+    c = keyboard_poll();
+  }
+  
+  c = scancode_set2[(c & 127)];
+  
+  if (!(keyboard_get_modflag() & KMOD_SHIFT)) {
+    c = tolower(c);
+  }
+  
+  return c;
+}
+
+int irq_kb(unsigned int n) {
+  //kprintf("evil?\n");
+  return 0;
+}
+
+void keyboard_initialize() {
+  //klock_init(&keyboard_lock);
+  
+  kb_queue_a = kb_queue_b = 0;
+  memset((void*)keypress, 0, 255);
+  kb_modflag = kb_toggles = 0;
+  
+  for (int i=0; i<255; i++) {
+    scancode_set2[i] = 0;
+  }
+  
+#define O 5
+
+  scancode_set2[43] = '\\';
+  
+  const char *line1 = "QWERTYUIOP[]";
+  for (int i=16; i<28; i++) {
+    scancode_set2[i] = line1[i-16];
+  }
+  
+  const char *line2 = "ASDFGHJKL;'";
+  for (int i=30; i<41; i++) {
+    scancode_set2[i] = line2[i-30];
+  }
+  
+  const char *line3 = "ZXCVBNM,./";
+  for (int i=44; i<54; i++) {
+    scancode_set2[i] = line3[i-44];
+  }
+  
+  const char *line4 = "1234567890-=";
+  for (int i=2; i<14; i++) {
+    scancode_set2[i] = line4[i-2];
+  }
+  
+  scancode_set2[41] = '`';
+  
+  scancode_set2[15] = '\t';
+  scancode_set2[28] = '\n';
+  scancode_set2[57] = ' ';
+}
+
+void keyboard_post_irq_enable() {
+  //clear any keyboard irq backlogs
+  unsigned short lastcode = 0;
+  unsigned int count = 0;
+  unsigned short code;
+  
+  keyboard_send_command(CMD_RESTORE_DEFAULTS);
+
+  for (int i=0; i<50; i++) {
+    code = inb(0x60);
+    
+    if (code == lastcode && code == 0xFA) {//ack
+      break;
+    }
+    
+    if (code != lastcode && i > 0) {
+      kprintf("%d: got code: %x\n", count, code);
+      lastcode = code;
+      count = 0;
+    }
+    
+    count++;
+  }
+  
+  kprintf("%d: got code: %x\n", count, code);
+  lastcode = code;
+  count = 0;
+}

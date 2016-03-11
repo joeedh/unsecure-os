@@ -1,0 +1,32 @@
+<NotepadPlus>
+    <Session activeView="0">
+        <mainView activeIndex="6">
+            <File firstVisibleLine="0" xOffset="0" scrollWidth="1" startPos="515" endPos="515" selMode="0" lang="Shell" encoding="-1" filename="F:\dev\asmboot\build.sh" backupFilePath="" originalFileLastModifTimestamp="1457121143" />
+            <File firstVisibleLine="0" xOffset="0" scrollWidth="2709" startPos="0" endPos="0" selMode="0" lang="Normal Text" encoding="-1" filename="F:\dev\asmboot\grub.cfg" backupFilePath="" originalFileLastModifTimestamp="1456990718" />
+            <File firstVisibleLine="129" xOffset="0" scrollWidth="2709" startPos="3927" endPos="3927" selMode="0" lang="C" encoding="-1" filename="F:\dev\asmboot\kernel\kernel_main.c" backupFilePath="" originalFileLastModifTimestamp="1457140838" />
+            <File firstVisibleLine="0" xOffset="0" scrollWidth="1218" startPos="122" endPos="122" selMode="0" lang="C++" encoding="-1" filename="F:\dev\asmboot\kernel\libc\string.h" backupFilePath="" originalFileLastModifTimestamp="1457053117" />
+            <File firstVisibleLine="0" xOffset="0" scrollWidth="2709" startPos="348" endPos="348" selMode="0" lang="Normal Text" encoding="-1" filename="F:\dev\asmboot\linker.ld" backupFilePath="" originalFileLastModifTimestamp="1457134897" />
+            <File firstVisibleLine="0" xOffset="0" scrollWidth="2709" startPos="0" endPos="0" selMode="0" lang="Shell" encoding="-1" filename="F:\dev\asmboot\make.sh" backupFilePath="" originalFileLastModifTimestamp="1456991213" />
+            <File firstVisibleLine="163" xOffset="0" scrollWidth="301" startPos="5355" endPos="5355" selMode="0" lang="Normal Text" encoding="-1" filename="F:\dev\asmboot\kernel\multiboot.nasm" backupFilePath="" originalFileLastModifTimestamp="1457141512" />
+            <File firstVisibleLine="0" xOffset="0" scrollWidth="2709" startPos="0" endPos="0" selMode="0" lang="C" encoding="-1" filename="F:\dev\asmboot\kernel\libc\libc.c" backupFilePath="" originalFileLastModifTimestamp="1456992753" />
+            <File firstVisibleLine="178" xOffset="0" scrollWidth="2709" startPos="3262" endPos="3262" selMode="0" lang="C" encoding="-1" filename="F:\dev\asmboot\kernel\libc\libk.c" backupFilePath="" originalFileLastModifTimestamp="1457128974" />
+            <File firstVisibleLine="25" xOffset="0" scrollWidth="2709" startPos="979" endPos="979" selMode="0" lang="C" encoding="-1" filename="F:\dev\asmboot\kernel\drivers\tty\tty.c" backupFilePath="" originalFileLastModifTimestamp="1457136384" />
+            <File firstVisibleLine="0" xOffset="0" scrollWidth="2709" startPos="230" endPos="234" selMode="0" lang="C++" encoding="-1" filename="F:\dev\asmboot\kernel\drivers\tty\tty.h" backupFilePath="" originalFileLastModifTimestamp="1457053059" />
+            <File firstVisibleLine="0" xOffset="0" scrollWidth="2709" startPos="221" endPos="221" selMode="0" lang="C++" encoding="-1" filename="F:\dev\asmboot\kernel\drivers\keyboard\keyboard.h" backupFilePath="" originalFileLastModifTimestamp="1457053031" />
+            <File firstVisibleLine="142" xOffset="0" scrollWidth="2709" startPos="3033" endPos="3033" selMode="0" lang="C" encoding="-1" filename="F:\dev\asmboot\kernel\drivers\keyboard\keyboard.c" backupFilePath="" originalFileLastModifTimestamp="1457135603" />
+            <File firstVisibleLine="38" xOffset="0" scrollWidth="2709" startPos="2000" endPos="2000" selMode="0" lang="C++" encoding="-1" filename="F:\dev\asmboot\kernel\io.h" backupFilePath="" originalFileLastModifTimestamp="1457076046" />
+            <File firstVisibleLine="0" xOffset="0" scrollWidth="2709" startPos="159" endPos="159" selMode="0" lang="C++" encoding="-1" filename="F:\dev\asmboot\kernel\libc\libk.h" backupFilePath="" originalFileLastModifTimestamp="1457135590" />
+            <File firstVisibleLine="0" xOffset="0" scrollWidth="2709" startPos="170" endPos="170" selMode="0" lang="C++" encoding="-1" filename="F:\dev\asmboot\kernel\libc\ctype.h" backupFilePath="" originalFileLastModifTimestamp="1457053618" />
+            <File firstVisibleLine="19" xOffset="0" scrollWidth="2709" startPos="952" endPos="952" selMode="0" lang="C++" encoding="-1" filename="F:\dev\asmboot\kernel\interrupts.h" backupFilePath="" originalFileLastModifTimestamp="1457140892" />
+            <File firstVisibleLine="168" xOffset="0" scrollWidth="2709" startPos="5358" endPos="5358" selMode="0" lang="C" encoding="-1" filename="F:\dev\asmboot\kernel\interrupts.c" backupFilePath="" originalFileLastModifTimestamp="1457139408" />
+            <File firstVisibleLine="0" xOffset="0" scrollWidth="2709" startPos="70" endPos="70" selMode="0" lang="C" encoding="-1" filename="F:\dev\asmboot\kernel\master_irq_table.c" backupFilePath="" originalFileLastModifTimestamp="1457132595" />
+            <File firstVisibleLine="123" xOffset="0" scrollWidth="2709" startPos="4271" endPos="4271" selMode="0" lang="C" encoding="-1" filename="F:\dev\asmboot\kernel\gdt.c" backupFilePath="" originalFileLastModifTimestamp="1457134377" />
+            <File firstVisibleLine="11" xOffset="0" scrollWidth="2709" startPos="646" endPos="646" selMode="0" lang="C++" encoding="-1" filename="F:\dev\asmboot\kernel\gdt.h" backupFilePath="" originalFileLastModifTimestamp="1457134793" />
+            <File firstVisibleLine="43" xOffset="0" scrollWidth="2709" startPos="3733" endPos="3733" selMode="0" lang="Normal Text" encoding="-1" filename="F:\dev\asmboot\scratch\test.nasm" backupFilePath="" originalFileLastModifTimestamp="1456972392" />
+            <File firstVisibleLine="0" xOffset="0" scrollWidth="2709" startPos="93" endPos="93" selMode="0" lang="Normal Text" encoding="-1" filename="F:\dev\asmboot\scratch\test.S" backupFilePath="" originalFileLastModifTimestamp="1456889976" />
+            <File firstVisibleLine="16" xOffset="0" scrollWidth="2709" startPos="689" endPos="689" selMode="0" lang="Normal Text" encoding="-1" filename="F:\dev\asmboot\scratch\oldtest.nasm" backupFilePath="" originalFileLastModifTimestamp="1456972383" />
+            <File firstVisibleLine="35" xOffset="0" scrollWidth="2709" startPos="1027" endPos="1027" selMode="0" lang="C" encoding="-1" filename="F:\dev\asmboot\kernel\libc\printf.c" backupFilePath="" originalFileLastModifTimestamp="1457128278" />
+        </mainView>
+        <subView activeIndex="0" />
+    </Session>
+</NotepadPlus>
