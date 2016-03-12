@@ -1,4 +1,5 @@
 #include "drivers/fs/fs_file.h"
+#include "drivers/fs/memfile.h"
 #include "drivers/tty/tty.h"
 #include "drivers/keyboard/keyboard.h"
 #include "drivers/tty/tty_file.h"
@@ -11,6 +12,7 @@
 #include "libc/kmalloc.h"
 
 #include "task/task.h"
+#include "task/process.h"
 
 volatile unsigned int enable_klock_debug;
 
@@ -47,7 +49,8 @@ void startup_kernel() {
   kprintf("\ninitializing interrupts. . .\n\n");
   
   tasks_initialize();
-
+  process_initialize();
+  
   interrupts_initialize();
   keyboard_post_irq_enable();
   
@@ -67,21 +70,41 @@ void kernel_testcall() {
   kernel_task1(0, NULL);
 }
 
+int test_task_finish(int argc, char **argv) {
+  kprintf("Start task finish\n");
+  
+  terminal_flush();
+  
+  kprintf("End task finish\n");
+  return 5;
+}
+
+void test_task_finish_finish(int ret, int tid, int pid) {
+  kprintf("-> %x %x %x\n", ret, tid, pid);
+}
+
 void kernel_main() {
   startup_kernel();
   
   kprintf("sizeof(Task): %d\n", sizeof(Task));
   
-  spawn_task(0, NULL, kcli_main);
-  spawn_task(0, NULL, tty_file_thread);
+  test_kmalloc();
   
-  kprintf("k_totaltasks: %d\n", k_totaltasks);
+  char *argv[] = {"yay", "one", "two", "three"};
+  
+  kprintf("\n\n");
+  terminal_flush();
+  
+  //spawn_task(4, argv, kcli_main, NULL, 0);
+  //spawn_task(6, (void*)0x7, test_task_finish, test_task_finish_finish, 0);
+  
+  Process *p = spawn_process("sh", 4, argv, kcli_main);
+  process_start(p);
   
   //paranoid check to ensure interrupts are now enabled
   asm("STI");
   
-  test_kmalloc();
-
+  //kprintf("k_totaltasks: %d\n", k_totaltasks);
   while (1) {
     //asm("PAUSE");
     //asm("STI");

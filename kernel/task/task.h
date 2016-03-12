@@ -1,6 +1,9 @@
 #ifndef _KTASK_H
 #define _KTASK_H
 
+#include "stddef.h"
+#include "stdint.h"
+
 #include "../timer.h"
 
 //SIZEOF task structure (ensure to update
@@ -12,13 +15,20 @@ typedef struct Task {
   volatile struct Task *next; //4
   volatile struct Task *prev; //8
   
-  volatile void *stack; //12 starting top of stack
-  volatile void *entry; //16 entry point
+  int scratch; //12 used in assembly code
+  int argc; //16
+  char **argv; //20
   
-  volatile unsigned int tid; //20
-  volatile unsigned int flag; //24
+  volatile void *stack; //24 starting top of stack
+  volatile void *entry; //28 entry point
   
-  volatile int sleep; //28 sleep ticks left
+  volatile unsigned int tid; //32
+  intptr_t pid;
+  volatile unsigned int flag; //36
+  
+  volatile int sleep; //40 sleep ticks left
+  
+  void (*finishcb)(int retval, int tid, int pid); //44
 } Task;
 
 extern volatile Task volatile * volatile k_curtaskp;
@@ -31,7 +41,8 @@ enum { //note: this is a bitfield
 Task *cur_task();
 void next_task();
 
-void spawn_task(int argc, char **argv, int (*main)(int argc, char **argv));
+int spawn_task(int argc, char **argv, int (*main)(int argc, char **argv),
+                void (*finishcb)(int retval, int tid, int pid), intptr_t pid);
 void tasks_initialize();
 
 //if all tasks are sleeping, switches to first one (idle task)

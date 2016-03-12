@@ -1,5 +1,5 @@
 %define POINTERSIZE 2
-%define TASK_SIZE 32 ;size of Task struct
+%define TASK_SIZE 52 ;size of Task struct
 %define DWSIZE 4
 %define LOCK_SIZE 8;
 
@@ -446,30 +446,31 @@ scratchptr2: dd 32;
 align 8;
 scratchptr3: dd 32;
 
+extern _task_cleanup;
+
 global __switchB;
 __switchB:
   ctx_push
   
   ;set new stack head 
-  mov eax, dword [scratchptr2];
-  mov dword [eax], esp;
+  mov eax, [k_curtaskp];
+  mov eax, dword [eax + 12];
   
-  ;reset stack
-  mov esp, dword [scratchptr];
+  mov dword [eax], esp;
   
   jmp __initTask2.next;
   
 __initTask2:
   ;save old stack position
-  mov dword [scratchptr], esp; 
+  mov ecx, esp;
   
   ;save third argument, pointer to new task
   mov eax, [esp + DWSIZE*3]; //new task
-  mov dword [scratchptr2], eax;
+  mov ebx, [k_curtaskp];
+  mov dword [ebx + 12], eax;
   
   mov eax, [esp + DWSIZE];   //new stack
   mov ebx, [esp + DWSIZE*2]; //entry point
-  mov dword [scratchptr3], ebx;
   
   ;switch to new stack
   mov esp, [esp + DWSIZE];
@@ -482,21 +483,26 @@ __initTask2:
   ;set up return jump pointer on new stack
   call 0x08:__switchB;
   
-  ;this section is skipped by calling thread
-  ;starts new process
-  
+  ;we're now within the new thread
   ;jump to entry point
   pop ebx;
-  ;mov dword [k_debug], ebx;
-  ;mov ebx, dword [scratchptr3];
   
+  ;mov argc/argv to right spot in stack
+  mov eax, [k_curtaskp];
+  push dword [eax + 20];
+  push dword [eax + 16];
+  
+  ;enable interrupts again
   sti;
+
+  ;call entry point for thread
   call ebx;
+  call _task_cleanup;
   
   .next:
   
   ;reset stack
-  mov esp, [scratchptr];
+  mov esp, ecx
   
   sti;
   ret;

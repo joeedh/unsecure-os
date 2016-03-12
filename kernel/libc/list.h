@@ -6,7 +6,7 @@ typedef struct Link {
 } Link;
 
 typedef struct LinkNode {
-  struct Link *next, *prev;
+  struct LinkNode *next, *prev;
   void *data;
 } LinkNode;
 

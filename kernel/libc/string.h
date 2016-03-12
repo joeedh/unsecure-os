@@ -11,6 +11,23 @@
 
 size_t strlen(const unsigned char* str);
 
+static inline int strcmp(const unsigned char *a, const unsigned char *b) {
+  unsigned char *c = (unsigned char*)a;
+  unsigned char *d = (unsigned char*)b;
+  
+  while (*c && *d) {
+    int delta = ((int)(*c)) - ((int)(*d));
+    if (delta != 0) {
+      return delta;
+    }
+    
+    c++;
+    d++;
+  }
+  
+  return *c || *d ? (*c ? -1 : 1) : 0;
+}
+  
 static inline int memset(void *s1, unsigned char v, size_t n) {
   size_t i = n;
   unsigned char *c1 = (unsigned char*) s1;
@@ -55,8 +72,8 @@ static inline int strcpy(const unsigned char *a, const unsigned char *b) {
   unsigned char *c = (unsigned char*)a;
   unsigned char *d = (unsigned char*)b;
   
-  *c = *d = 0;
-  while (*c) {
+  *c = 0;
+  while (*d) {
     *c++ = *d++;
   }
   *c = 0;
@@ -70,8 +87,8 @@ static inline int strncpy(const unsigned char *a, const unsigned char *b, size_t
   unsigned char *d = (unsigned char*)b;
   unsigned int i=0;
   
-  *c = *d = 0;
-  while (*c && i < b_size) {
+  *c = 0;
+  while (*d && i < b_size) {
     *c++ = *d++;
   }
   *c = 0;
@@ -92,6 +109,32 @@ static inline int memcpy(void *s1, void *s2, size_t n) {
   }
   
   return 0;
+}
+
+//find last occurance of character
+static size_t strcspn ( const char * str1, const char * str2 ) {
+  if (!str1 || !str2) {
+    return 0;
+  }
+  
+  char *a = (char*)str1;
+  size_t i = 0;
+  
+  while (*a) {
+    char *b = (char*)str2;
+    
+    while (*b) {
+      if (*b == *a) {
+        return i;
+      }
+      b++;
+    }
+    
+    i++;
+    a++;
+  }
+  
+  return i;
 }
 
 static unsigned char *strrchr(const unsigned char *str, unsigned int character) {

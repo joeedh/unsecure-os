@@ -13,6 +13,6 @@ int test_kmalloc();
 
 #define kmalloc(size) _kmalloc(size, __FILE__, __LINE__)
 #define kfree(mem) _kfree(mem, __FILE__, __LINE__)
-#define kprintblocks() _kprintblocks(mem, __FILE__, __LINE__)
+#define kprintblocks() _kprintblocks(__FILE__, __LINE__)
 
 #endif /* _KMALLOC_H */

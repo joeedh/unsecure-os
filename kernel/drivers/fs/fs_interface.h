@@ -34,7 +34,9 @@ enum { //is a bitfield
   O_RSYNC=(1<<13),
   O_SYNC=(1<<14),
   O_TRUNC=(1<<15), //erase files on opening
-  O_TTY_INIT=(1<<16)
+  O_TTY_INIT=(1<<16),
+  O_PIPE_MODE=(1<<17),
+  _O_REVERSE=(1<<18)
 };
 
 enum {
@@ -79,6 +81,7 @@ typedef struct FSInterface {
   int (*dir_getentry)(BlockDeviceIF *device, int dir_inode, int inode);
   
   int (*stat)(BlockDeviceIF *device, int inode, struct stat *buf);
+  int (*fstat)(BlockDeviceIF *device, int fd, struct stat *buf);
   
   int (*chmod)(BlockDeviceIF *device, int inode, int permissions);
   int (*chuser)(BlockDeviceIF *device, int inode, int userid);

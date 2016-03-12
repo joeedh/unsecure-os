@@ -70,6 +70,13 @@ static inline unsigned long read_cr0(void)
     return val;
 }
 
+static inline unsigned int read_eax(void)
+{
+    unsigned int val;
+    asm volatile ( "mov %%eax, %0" : "=r"(val) );
+    return val;
+}
+
 static inline unsigned short read_ax(void)
 {
     unsigned short val;

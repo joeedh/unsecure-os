@@ -11,18 +11,19 @@
 #include "../fs/fs_file.h"
 
 static unsigned char tty_buffer[25*80*8];
-static unsigned int cursor;
-static unsigned int head, tail;
+static int cursor;
+static int head, tail;
 
 int tty_file_thread(int argc, char **argv) {
   //int *nullptr = 0x1;
   //*nullptr = 0x0; 
   //kprintf(":%d\n", *nullptr);
   
+  kprintf("\n\n");
   terminal_flush();
   
   while (1) {
-    short code = keyboard_poll(); //getchar_nowait();
+    short code = keyboard_poll();
     
     if (code > 0 && (code&128) == 0) {
       //kprintf(" %x             %x\n", code & 127, get_raw_keycode(code) & 127);
@@ -35,6 +36,29 @@ int tty_file_thread(int argc, char **argv) {
       if (keyboard_isprint(ch) || ch == '\n' || ch == '\r' || ch == '\t') {
         ch = keyboard_handle_case(ch);
         
+        if (cursor > 0) {
+          terminal_putchar('\n');
+          terminal_putchar('\r');
+          
+          for (int i=head; i > (int)(head - cursor); i--) {
+            if (i < 1) continue;
+            
+            tty_buffer[i] = tty_buffer[i-1];
+          }
+          
+          head++;
+          
+          tty_buffer[head-cursor] = ' ';
+          
+          for (int i=head-cursor; i < head; i++) {
+            if (i < 0) {
+              continue;
+            }
+            
+            terminal_putchar(tty_buffer[i]);
+          }
+        }
+        
         tty_buffer[head] = ch;
         head = (head + 1) % sizeof(tty_buffer);
         
@@ -44,9 +68,12 @@ int tty_file_thread(int argc, char **argv) {
         switch (ch) {
           case KEY_LEFT:
             terminal_move_cursor(-1);
+            cursor += 1;
             break;
           case KEY_RIGHT:
             terminal_move_cursor(1);
+            cursor -= 1;
+            cursor = cursor < 0 ? 0 : cursor;
             break;
           case KEY_ENTER:
             break;

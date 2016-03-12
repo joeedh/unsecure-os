@@ -1,6 +1,7 @@
 #ifndef _LOCK_H
 #define _LOCK_H
 
+#include "../libc/string.h"
 #include "../io.h"
 #include "../interrupts.h"
 #include "task.h"

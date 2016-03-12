@@ -63,6 +63,9 @@ static unsigned int alloc_stack() {
   return 0L;
 }
 
+void _null_finishcb(int retval, int tid, int pid) {
+}
+
 void free_stack(unsigned long stack) {
   for (int i=1; i<MAX_TASKS+1; i++) {
     if (taskstacks[i] == stack) {
@@ -71,14 +74,23 @@ void free_stack(unsigned long stack) {
     }
   }
 }
-/*
-void task_cleanup(Task *task) {
+
+//*
+void task_cleanup(volatile Task *task, int retval) {
   asm("CLI");
   
-  free_stack((unsigned long) task->stack);
+  //take out of schedule loop
+  task->prev->next = task->next;
+  task->next->prev = task->prev;
   task->flag = TASK_DEAD;
+
+  task->finishcb(retval, task->tid, task->pid);
   
+  free_stack((unsigned long) task->stack);
   asm("STI");
+  
+  while (1) { //wait for switch
+  }
 }
 //*/
 
@@ -86,12 +98,46 @@ extern void __initTask(void *stack, void *start);
 extern void __initTask2(volatile unsigned int *stack, void *start, volatile Task *newtask);
 extern void __saveStack();
 
-void spawn_task(int argc, char **argv, int (*main)(int argc, char **argv)) {
+typedef struct wrapper {
+  int argc;
+  void *argv;
+  int (*main)(int argc, char **argv);
+  volatile Task *task;
+} wrapper;
+
+void wrapped_main(int argc, char **argv) {
+  wrapper *data = (wrapper*)argv;
+  
+  int ret = data->main(data->argc, data->argv);
+  
+  //task_cleanup kills the thread
+  task_cleanup(data->task, ret);
+  
+  while (1) {
+  }
+}
+
+void _task_cleanup() {
+  volatile Task *task = k_curtaskp;
+  
+  asm("CLI");
+  
+  task_cleanup(task, read_eax());
+  
+  asm("STI");
+}
+
+int spawn_task(int argc, char **argv, int (*main)(int argc, char **argv),
+                void (*finishcb)(int retval, int tid, int pid), intptr_t pid) {
   asm("cli");
 
   volatile Task *task = NULL;
   volatile unsigned int *stack;
   int i;
+  
+  if (finishcb == NULL) {
+    finishcb = _null_finishcb;
+  }
   
   for (i=0; i<MAX_TASKS; i++) {
     if (tasks[i].flag == TASK_DEAD) {
@@ -103,13 +149,14 @@ void spawn_task(int argc, char **argv, int (*main)(int argc, char **argv)) {
   if (!task) {
     kerror(0, "hit maximum task limit");
     asm("sti");
-    return;
+    return -1;
   }
   
   if (i+1 > k_totaltasks) {
     k_totaltasks = i+1;
   }
   
+  task->finishcb = finishcb;
   task->prev = (Task*) k_curtaskp;
   task->next = k_curtaskp->next;
   
@@ -125,16 +172,34 @@ void spawn_task(int argc, char **argv, int (*main)(int argc, char **argv)) {
   task->entry = (void*)main;
   task->tid = k_tidbase++;
   task->sleep = task_switch_granularity;
+  task->argc = argc;
+  task->argv = argv;
+  task->pid = pid;
+  
+  uintptr_t addr2 = (unsigned int) task->stack;
+  //align to eight bytes
+  addr2 -= addr2 & 7;
+  task->stack = (void*)addr2;
   
   stack = (unsigned int*) task->stack;
 
+  kprintf(":argc: %x, argv: %x stack: %x\n", (unsigned int) argc, (unsigned int) argv, (unsigned int)task->stack);
+    
   *stack-- = (unsigned int) argv;
   *stack-- = (unsigned int) argc;
   
+  //for (int i=0; i<16; i++) {
+  //  *stack-- = 0;
+  //}
+  
   task->head = stack;
-
+  
+  int tid = task->tid;
+  
   //switch to task.  will re-enable interrupts
   __initTask2(stack, main, task);
+  
+  return tid;
 }
 
 Task *cur_task() {
