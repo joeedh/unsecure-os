@@ -24,13 +24,6 @@ SECTIONS
   {
 		*(.irq.table)
   }
-  
-	/* Read-write data (initialized) */
-	.data BLOCK(4K) : ALIGN(4K)
-	{
-    *(.irq)
-	}
-  
 
 	/* Read-only data. */
 	.rodata BLOCK(4K) : ALIGN(4K)
@@ -38,7 +31,7 @@ SECTIONS
 		*(.rodata)
 	}
 
-	/* Read-write data (initialized) */
+	/* Read-write data (initialized) */ 
 	.data BLOCK(4K) : ALIGN(4K)
 	{
 		*(.data)
@@ -51,7 +44,12 @@ SECTIONS
 		*(.bss)
 		*(.bootstrap_stack)
 	}
-
+  
+  .data BLOCK(4K) : ALIGN(4K)
+  {
+    _tinyext2_fs.o
+  }
 	/* The compiler may produce other sections, by default it will put them in
 	   a segment with the same name. Simply add stuff here as needed. */
 }
+

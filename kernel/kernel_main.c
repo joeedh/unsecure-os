@@ -1,11 +1,17 @@
 #include "drivers/fs/fs_file.h"
+#include "drivers/fs/fs_interface.h"
+#include "drivers/blockdevice/blockdevice.h"
 #include "drivers/fs/memfile.h"
+#include "drivers/ext2/ext2.h"
+#include "drivers/blockdevice/memblock.h"
 #include "drivers/tty/tty.h"
 #include "drivers/keyboard/keyboard.h"
 #include "drivers/tty/tty_file.h"
 #include "io.h"
 #include "interrupts.h"
 #include "gdt.h"
+
+#include "drivers/fs/dirent.h"
 
 #include "libc/string.h"
 #include "libc/libk.h"
@@ -25,8 +31,78 @@ extern volatile unsigned int k_debug;
 volatile unsigned int k_debug2;
 extern Task tasks[];
 
+FSInterface *rootfs;
+BlockDeviceIF *rootdevice;
+
+extern char _tinyext2_fs[];
+extern unsigned int _tinyext2_fs_size;
+
+void setup_root() {
+  size_t size = _tinyext2_fs_size;
+  size_t bsize = 512;
+  
+   //how to deal with remainder/rounding?
+   //for now, just truncate
+  size = size - (size % bsize);
+  
+  BlockDeviceIF *device = kmemblock_new(bsize, _tinyext2_fs_size/bsize);
+  device->write(device, 0, size, _tinyext2_fs);
+  
+  FSInterface *fs = kext2fs_create(device);
+  rootfs = fs;
+  
+  if (fs->mount_filesystem) {
+    fs->mount_filesystem(fs, device);
+  }
+  
+  rootdevice = device;
+  rootfs = fs;
+}
+
+void test_rootfs() {
+  //struct stat mstat;
+  //int totentries;
+
+  //totentries = rootfs->dir_entrycount(rootfs, rootdevice, 2);
+  
+  //rootfs->stat(rootfs, rootdevice, 2, &mstat, NULL);
+  
+  //kprintf("stat size: %d\n", mstat.st_msize);
+  //kprintf("totentries: %d\n", totentries);
+  
+  
+  DIR *dir = opendir_inode(2);
+  struct dirent *entry;
+  int i=0;
+  
+  while ((entry = readdir(dir))) {
+    kprintf("  %d:%s\n", entry->d_ino, entry->d_name);
+    
+    if (i++ > 5000) {
+      kprintf("infinite loop!\n");
+      break;
+    }
+  }
+
+  closedir(dir);
+  kprintf("\n");
+  
+  dir = opendir("/usr/include");
+  while ((entry = readdir(dir))) {
+    kprintf("  %d:%s\n", entry->d_ino, entry->d_name);
+    
+    if (i++ > 5000) {
+      kprintf("infinite loop!\n");
+      break;
+    }
+  }
+  
+  closedir(dir);
+}
+
 void startup_kernel() {
   _cpu_exception_flag = 0;
+  rootfs = NULL;
   
 //  extern volatile unsigned int enable_klock_debug;
   
@@ -35,26 +111,34 @@ void startup_kernel() {
   timer_initialize();
   gdt_initialize();
 
-  libk_initialize();
-  
 	/* Initialize terminal interface */
 	terminal_initialize();
-  keyboard_initialize();
-
-  kmalloc_init();
   
-  filesystem_initialize();
-  tty_file_initialize();
-  
-  kprintf("\ninitializing interrupts. . .\n\n");
-  
-  tasks_initialize();
-  process_initialize();
+  kprintf("\ninitializing interrupts. . .\n");
   
   interrupts_initialize();
   keyboard_post_irq_enable();
+
+  kmalloc_init();
+  libk_initialize();
+
+  tasks_initialize();
+  process_initialize();
   
-  //asm("STI");
+  /* keyboard */
+  keyboard_initialize();
+
+  //test_kmalloc();
+
+  filesystem_initialize();
+  tty_file_initialize();
+  
+  //test_rootfs
+  kprintf("\nmounting file system. . .\n");
+  setup_root();
+  
+  //kprintf("\ntesting file system code. . .\n");
+  //test_rootfs();
   
   kprintf("Kernel started\n Exception flag: %d\n", _cpu_exception_flag);
 }
@@ -86,28 +170,47 @@ void test_task_finish_finish(int ret, int tid, int pid) {
 void kernel_main() {
   startup_kernel();
   
+  /*
+  asm("CLI");
+  while (1) {
+  }
+  return;
+  //*/
   kprintf("sizeof(Task): %d\n", sizeof(Task));
+  //test_kmalloc();
   
-  test_kmalloc();
+  //while (1) {
+  //}
   
-  char *argv[] = {"yay", "one", "two", "three"};
+  //test_kmalloc();
   
-  kprintf("\n\n");
+  //char *argv[] = {"yay", "one", "two", "three"};
+  
+  kprintf("Started Task! %x\n", k_curtaskp);
   terminal_flush();
   
-  //spawn_task(4, argv, kcli_main, NULL, 0);
-  //spawn_task(6, (void*)0x7, test_task_finish, test_task_finish_finish, 0);
+  spawn_task(0, NULL, kernel_task2, NULL, 0);
   
-  Process *p = spawn_process("sh", 4, argv, kcli_main);
-  process_start(p);
+  kprintf("              %x\n", k_curtaskp);
+  terminal_flush();
   
-  //paranoid check to ensure interrupts are now enabled
+  //paranoia check to ensure interrupts are now enabled
   asm("STI");
+
+  unsigned int last_tick = 0;
+  unsigned int counter = 0;
   
   //kprintf("k_totaltasks: %d\n", k_totaltasks);
   while (1) {
     //asm("PAUSE");
-    //asm("STI");
+    asm("STI");
+    
+    if (last_tick != kernel_tick) {
+      counter++;
+      kprintf("%d\n", counter);
+      //kprintf("  TIMER: %d, k_totaltasks: %d k_debug %x\n", kernel_tick, k_totaltasks, (unsigned int) k_debug);
+      last_tick = kernel_tick;
+    }
     //task_sleep(1);
   }
 }
@@ -115,14 +218,15 @@ void kernel_main() {
 int kernel_task2(int argc, char **argv) {
   unsigned int last_tick = -1;
   
-  kprintf("start!");
+  kprintf("start!\n");
+  terminal_flush();
   
   unsigned int counter = 0;
   
   while (1) {
     if (last_tick != kernel_tick) {
       counter++;
-      kprintf("%d\n", counter);
+      kprintf("-%d\n", counter);
       //kprintf("  TIMER: %d, k_totaltasks: %d k_debug %x\n", kernel_tick, k_totaltasks, (unsigned int) k_debug);
       last_tick = kernel_tick;
     }
@@ -187,9 +291,7 @@ int kernel_task1(int argc, char **argv) {
   terminal_putchar('\n');
   terminal_putchar('\n');
   
-  extern volatile unsigned int scratchptr3;
-  
-  kprintf("-->: |%d| |%d|\n", k_debug, scratchptr3);
+  kprintf("-->: |%d| \n", k_debug);
   
   kprintf("gdt: %x %x\n", (unsigned int)addr, (unsigned int)__k_gdt);
   char *gdt1 = (char*)addr;

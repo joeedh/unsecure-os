@@ -123,39 +123,69 @@ uint16_t PIC_get_isr(void)
     return __pic_get_irq_reg(PIC_READ_ISR);
 }
 
-extern interrupt_record master_interrupt_table[256];
 volatile int last_irq = 0;
 extern volatile unsigned int _cpu_exception_flag;
 
-#define EXC_HANDLE(n) void _exc_handler##n(unsigned int flag) {\
-  _cpu_exception_flag |= flag;\
+#define EXC_HANDLE(n) \
+extern void exr_##n();\
+void _exc_handler##n(unsigned int flag) {\
+  _cpu_exception_flag |= 1<<n;\
 }
 
-EXC_HANDLE(0);
-EXC_HANDLE(1);
-EXC_HANDLE(2);
-EXC_HANDLE(3);
-EXC_HANDLE(4);
-EXC_HANDLE(5);
-EXC_HANDLE(6);
-EXC_HANDLE(7);
+
+#define DEATH_EXCEPTION(n) \
+extern void exr_##n();\
+void _exc_handler##n(unsigned int flag) {\
+  _cpu_exception_flag |= flag;\
+  kerror(n, "Got exception " #n);\
+}
+
+#define WARN_EXCEPTION(n) \
+extern void exr_##n();\
+void _exc_handler##n(unsigned int flag) {\
+  _cpu_exception_flag |= flag;\
+  kprintf("====Got exception " #n "=====\n");\
+}
+
+DEATH_EXCEPTION(0); //divide by zero
+
+EXC_HANDLE(1); //debug
+EXC_HANDLE(2); //non-maskable interrupt
+EXC_HANDLE(3); //breakpoint
+EXC_HANDLE(4); //overflow
+EXC_HANDLE(5); //bound-range error
+DEATH_EXCEPTION(6); //invalid opcode
+DEATH_EXCEPTION(7); //device not available
+EXC_HANDLE(8); //double fault
+EXC_HANDLE(9); //coprocessor segment overrun
+EXC_HANDLE(10); //invalid tss
+EXC_HANDLE(11); //segment not present
+EXC_HANDLE(12); //stack error
+DEATH_EXCEPTION(13); //general protection error (e.g. memory)
+EXC_HANDLE(14); //page fault
 
 //there are only seven of these, so just define table here
 void *excptrs[] = {
-  _exc_handler0,
-  _exc_handler1,
-  _exc_handler2,
-  _exc_handler3,
-  _exc_handler4,
-  _exc_handler5,
-  _exc_handler6,
-  _exc_handler7
+  exr_0,
+  exr_1,
+  exr_2,
+  exr_3,
+  exr_4,
+  exr_5,
+  exr_6,
+  exr_7,
+  exr_8,
+  exr_9,
+  exr_10,
+  exr_11,
+  exr_12,
+  exr_13,
+  //exr_14
 };
 
-#define tot_excptrs 8
+#define tot_excptrs 14 //((int)(sizeof(excptrs) / sizeof(void*)))
 
 #define ISR_HANDLE(n) void _isr_handler##n() {\
-  master_interrupt_table[n].callback(n);\
 }
 
 //ISR_HANDLE(0);// <- timer
@@ -196,11 +226,6 @@ void interrupts_initialize() {
   
   memset(idt_table, 0, sizeof(idt_table));
   
-  for (int i=0; i<256; i++) {
-    master_interrupt_table[i].callback = nop_interrupt_handler;
-    master_interrupt_table[i].flag = 0;
-  }
-  
   for (int i=0; i<tot_idtptrs; i++) {
     unsigned short off1, off2;
     unsigned long off = (unsigned long)idtptrs[i];
@@ -228,7 +253,7 @@ void interrupts_initialize() {
   
   //exception handlers
   //return;
-  for (int i=0; i<7; i++) {
+  for (int i=0; i<tot_excptrs; i++) {
     unsigned short off1, off2;
     unsigned long off = (unsigned long)excptrs[i];
     
@@ -253,18 +278,5 @@ void interrupts_initialize() {
 
   
   _setIRT();
-}
-
-//XXX implement multiple handlers per irq slot?
-void interrupts_add_handler(unsigned int irq, int (*cb)(unsigned int irq)) {
-  irq = irq & 255;
-  
-  master_interrupt_table[irq].callback = cb;
-  master_interrupt_table[irq].flag = 0;
-}
-
-void interrupts_remove_handler(unsigned int irq, int (*cb)(unsigned int irq)) {
-  master_interrupt_table[irq].callback = nop_interrupt_handler;
-  master_interrupt_table[irq].flag = 0;
 }
 

@@ -24,15 +24,23 @@ typedef struct Lock {
 
 #define SPINLOCK 0
 #define IRQLOCK  1
+#define NOTHING  2
 
-#define LOCKMETHOD IRQLOCK
+#define LOCKMETHOD SPINLOCK
 
 static const char *_get_filename(const char *file) {
   char *ret = strrchr(file, '/');
   return !ret || !ret[1] ? file : ret+1;
 }
 
-#if LOCKMETHOD == IRQLOCK
+#if LOCKMETHOD == NOTHING
+static inline void _klock_init(Lock *lock, const char *file, int line) {
+}
+static inline void _klock_lock(Lock *lock, const char *file, int line) {
+}
+static inline void _klock_unlock(Lock *lock, const char *file, int line) {
+}
+#elif LOCKMETHOD == IRQLOCK
 static inline void _klock_init(Lock *lock, const char *file, int line) {
   lock->state = lock->owner = 0;
   
@@ -99,9 +107,9 @@ static inline void _klock_init(Lock *lock, const char *file, int line) {
 
 //interrupt version
 static inline void _klock_lock(Lock *lock, const char *file, int line) {
-  volatile unsigned int pid = k_curtaskp->tid;
+  volatile unsigned int tid = k_curtaskp->tid;
   
-  if (lock->owner == pid) {
+  if (lock->owner == tid) {
     lock->state++;
     return;
   }
@@ -109,7 +117,7 @@ static inline void _klock_lock(Lock *lock, const char *file, int line) {
 restart:
   do {
     k_curtaskp->sleep = 1;
-    //asm("PAUSE");
+    asm("PAUSE");
   } while (lock->owner != 0);
   
   volatile unsigned int state = safe_entry();
@@ -119,7 +127,7 @@ restart:
     goto restart;
   }
   
-  lock->owner = pid;
+  lock->owner = tid;
   lock->state = 1;
   
   safe_exit(state);
@@ -130,15 +138,14 @@ restart:
 }
 
 static inline void _klock_unlock(Lock *lock, const char *file, int line) {
-  volatile unsigned int pid = k_curtaskp->tid;
+  volatile unsigned int tid = k_curtaskp->tid;
   
-  if (lock->owner != pid) {
+  if (lock->owner != tid) {
     return; //hrm, bad unlock call
   }
   
   if (!--lock->state) {
     volatile unsigned int state = safe_entry();
-    
     lock->owner = 0;
     safe_exit(state);
   }

@@ -28,9 +28,9 @@ static inline int strcmp(const unsigned char *a, const unsigned char *b) {
   return *c || *d ? (*c ? -1 : 1) : 0;
 }
   
-static inline int memset(void *s1, unsigned char v, size_t n) {
+static inline int memset(volatile void *s1, unsigned char v, size_t n) {
   size_t i = n;
-  unsigned char *c1 = (unsigned char*) s1;
+  volatile unsigned char *c1 = (volatile unsigned char*) s1;
   
   while (i > 0) {
     *c1 = v;
@@ -111,32 +111,33 @@ static inline int memcpy(void *s1, void *s2, size_t n) {
   return 0;
 }
 
-//find last occurance of character
+//find first occurance of character
 static size_t strcspn ( const char * str1, const char * str2 ) {
   if (!str1 || !str2) {
     return 0;
   }
   
-  char *a = (char*)str1;
+  unsigned char *a = (unsigned char*)str1;
   size_t i = 0;
   
   while (*a) {
-    char *b = (char*)str2;
+    unsigned char *b = (unsigned char*)str2;
     
     while (*b) {
       if (*b == *a) {
         return i;
       }
+      
       b++;
     }
     
-    i++;
-    a++;
+    i++, a++;
   }
   
   return i;
 }
 
+//find last occurance of character
 static unsigned char *strrchr(const unsigned char *str, unsigned int character) {
   unsigned char *c = (char*) str;
   unsigned char *last = c;
@@ -159,8 +160,13 @@ static unsigned char *strrchr(const unsigned char *str, unsigned int character) 
 
 int toupper(int c);
 int tolower(int c);
+
 int isupper(int c);
 int islower(int c);
 int isprint(int c);
+
+static inline int iswhitespace(int c) {
+  return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\v';
+}
 
 #endif /* _STRING_H */

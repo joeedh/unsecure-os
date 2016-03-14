@@ -94,23 +94,23 @@ int tty_file_thread(int argc, char **argv) {
   }
 }
 
-static int tty_pread(BlockDeviceIF *device, int file, const char *buf, size_t bufsize, size_t fileoff) {
+static int tty_pread(void *self, BlockDeviceIF *device, int file, const char *buf, size_t bufsize, size_t fileoff) {
   return 0;
 }
 
-static int tty_pwrite(BlockDeviceIF *device, int file, const char *buf, size_t bufsize, size_t fileoff) {
+static int tty_pwrite(void *self, BlockDeviceIF *device, int file, const char *buf, size_t bufsize, size_t fileoff) {
   return 0;
 }
 
-static int tty_close(BlockDeviceIF *device, int file) {
+static int tty_close(void *self, BlockDeviceIF *device, int file) {
   return 0;
 }
 
-static int tty_flush(BlockDeviceIF *device, int file) {
+static int tty_flush(void *self, BlockDeviceIF *device, int file) {
   return 0;
 }
 
-static int tty_accessmode(BlockDeviceIF *device) {
+static int tty_accessmode(void *self, BlockDeviceIF *device) {
   return O_RDWR|O_SEARCH;
 }
 

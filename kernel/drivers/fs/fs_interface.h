@@ -5,6 +5,9 @@
 #include "stdint.h"
 
 #include "../blockdevice/blockdevice.h"
+#include "../fs/dirent.h"
+
+#define MAX_PATH 255
 
 //XXX look up in posix
 typedef struct stat {
@@ -48,44 +51,63 @@ enum {
   FILE_TYPE_ERROR=5
 };
 
+//note that all string parameters are null terminated, even if they require
+//their buffer size be passed in as well.
+
 //device parameter is a BlockDeviceIF
 typedef struct FSInterface {
   char *name;
   
   //see ACCESS_*** enum
-  int (*accessmode)(BlockDeviceIF *device);
-  int (*open)(BlockDeviceIF *device, const char *utf8path, int utf8path_size, int oflag);
-  int (*openat)(int fd, BlockDeviceIF *device, const char *utf8path, int utf8path_size, int oflag);
-  int (*close)(BlockDeviceIF *device, int fd);
+  int (*accessmode)(void *self, BlockDeviceIF *device);
+  int (*open)(void *self, BlockDeviceIF *device, const char *utf8path, int utf8path_size, int oflag);
+  int (*openat)(void *self, int fd, BlockDeviceIF *device, const char *utf8path, int utf8path_size, int oflag);
+  int (*close)(void *self, BlockDeviceIF *device, int fd);
   
   //returns number of bytes written
-  int (*pwrite)(BlockDeviceIF *device, int file, const char *buf, size_t bufsize, size_t fileoff);
+  int (*pwrite)(void *self, BlockDeviceIF *device, int file, const char *buf, size_t bufsize, size_t fileoff);
   
   //returns number of bytes read
-  int (*pread)(BlockDeviceIF *device, int file, const char *buf, size_t bufsize, size_t fileoff);
-  int (*lseek)(BlockDeviceIF *device, int file, size_t off, size_t whence);
-  int (*rewind)(BlockDeviceIF *device, int file);
-  int (*tell)(BlockDeviceIF *device, int file);
-  int (*eof)(BlockDeviceIF *device, int file);
+  int (*pread)(void *self, BlockDeviceIF *device, int file, const char *buf, size_t bufsize, size_t fileoff);
+  int (*lseek)(void *self, BlockDeviceIF *device, int file, size_t off, size_t whence);
+  int (*rewind)(void *self, BlockDeviceIF *device, int file);
+  int (*tell)(void *self, BlockDeviceIF *device, int file);
+  int (*eof)(void *self, BlockDeviceIF *device, int file);
   
-  int (*flush)(BlockDeviceIF *device, int file);
+  int (*flush)(void *self, BlockDeviceIF *device, int file);
   
-  void (*mount_filesystem)(BlockDeviceIF *device);
-  void (*unmount_filesystem)(BlockDeviceIF *device);
+  void (*mount_filesystem)(void *self, BlockDeviceIF *device);
+  void (*unmount_filesystem)(void *self, BlockDeviceIF *device);
   
-  int (*path_to_inode)(BlockDeviceIF *device, const char *utf8path, int utf8path_size);
-  int (*inode_to_path)(BlockDeviceIF *device, int inode, const char *utf8path, int utf8path_size);
+  //returns -1 if failed to find inode, otherwise returns inode
+  int (*path_to_inode)(void *self, BlockDeviceIF *device, const char *utf8path, int utf8path_size);
+  //int (*inode_to_path)(void *self, BlockDeviceIF *device, int inode, const char *utf8path, int utf8path_size);
+
+  //these two return -1 if failed to open directory
+  int (*opendir_inode)(void *self, BlockDeviceIF *device, DIR *dir, int inode);
+  int (*opendir)(void *self, BlockDeviceIF *device, DIR *dir, const char *path);
   
-  //directories
-  size_t (*dir_entrycount)(BlockDeviceIF *device, int dir_inode);
-  int (*dir_getentry)(BlockDeviceIF *device, int dir_inode, int inode);
+  DIR *(*closedir)(void *self, BlockDeviceIF *device, DIR *dir);
   
-  int (*stat)(BlockDeviceIF *device, int inode, struct stat *buf);
-  int (*fstat)(BlockDeviceIF *device, int fd, struct stat *buf);
+  //returns 1 if no more directory entires, otherwise returns 0.  returns -1 on error.
+  int (*readdir)(void *self, BlockDeviceIF *device, struct dirent *, DIR *dir);
   
-  int (*chmod)(BlockDeviceIF *device, int inode, int permissions);
-  int (*chuser)(BlockDeviceIF *device, int inode, int userid);
-  int (*chgroup)(BlockDeviceIF *device, int inode, int groupid);
+  //rewind directory pointer
+  int (*rewinddir)(void *self, BlockDeviceIF *device, DIR *dir);
+  
+  //-----      directories    -----
+  size_t (*dir_entrycount)(void *self, BlockDeviceIF *device, int dir_inode);
+  
+  //namebuf is optional
+  int (*dir_getentry)(void *self, BlockDeviceIF *device, int dir_inode, int inode, char namebuf[MAX_PATH]);
+  
+  //namebuf is optional
+  int (*stat)(void *self, BlockDeviceIF *device, int inode, struct stat *buf, char namebuf[MAX_PATH]);
+  int (*fstat)(void *self, BlockDeviceIF *device, int fd, struct stat *buf);
+  
+  int (*chmod)(void *self, BlockDeviceIF *device, int inode, int permissions);
+  int (*chuser)(void *self, BlockDeviceIF *device, int inode, int userid);
+  int (*chgroup)(void *self, BlockDeviceIF *device, int inode, int groupid);
 } FSInterface;
 
 #endif /* _FS_INTERFACE_H */

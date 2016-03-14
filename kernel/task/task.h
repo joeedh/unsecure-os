@@ -9,7 +9,7 @@
 //SIZEOF task structure (ensure to update
 //assembler too: 32 (for 32-bit mode)
 
-typedef struct Task {
+typedef volatile struct Task {
   volatile void *head;  //0 top of stack
   
   volatile struct Task *next; //4
@@ -29,6 +29,7 @@ typedef struct Task {
   volatile int sleep; //40 sleep ticks left
   
   void (*finishcb)(int retval, int tid, int pid); //44
+  volatile int pad;
 } Task;
 
 extern volatile Task volatile * volatile k_curtaskp;
@@ -36,14 +37,18 @@ extern volatile Task volatile * volatile k_curtaskp;
 enum { //note: this is a bitfield
   TASK_DEAD  = 0,
   TASK_ALIVE = 1,
+  TASK_SCHEDULED = 2
 };
+
+void tasks_initialize();
 
 Task *cur_task();
 void next_task();
 
+void task_destroy(volatile Task *task, int retval, int wait_if_inside);
+void task_switch(volatile void *stack);
 int spawn_task(int argc, char **argv, int (*main)(int argc, char **argv),
                 void (*finishcb)(int retval, int tid, int pid), intptr_t pid);
-void tasks_initialize();
 
 //if all tasks are sleeping, switches to first one (idle task)
 volatile Task *get_next_task();
@@ -51,7 +56,6 @@ volatile Task *get_next_task();
 //version of get_next_task that decrements ->sleep as it goes along
 volatile Task *get_next_task_timer(); 
 
-extern void task_switch(volatile void *stack);
 extern volatile unsigned int kernel_tick;
 
 static inline void task_sleep(unsigned int ms) {

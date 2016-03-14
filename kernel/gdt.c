@@ -115,7 +115,7 @@ void gdt_decode(uint8_t *target, struct GDT *source)
   gdt_encode(__k_gdt[i++], &gdt);
   
 
-unsigned char myTss[0x64];
+TSS myTss;
 
 extern void _setGDT_prot2();
 extern struct IDTEntry idt_table[256];
@@ -124,14 +124,16 @@ extern void isr_2();
 extern void isr_3();
 extern void isr_4();
 extern void isr_end();
+extern void tss_stack_top();
 
 void gdt_initialize() {
-#if 1
   GDT gdt;
   int i=0;
   
-  memset(myTss, 0, sizeof(myTss));
+  memset((void*) &myTss, 0, sizeof(myTss));
   memset(__k_gdt, 0, sizeof(__k_gdt));
+  
+  myTss.esp0 = (unsigned long) tss_stack_top;
   
   //unsigned long isr_len = (unsigned long)isr_end - (unsigned long)isr_1;
   
@@ -140,14 +142,14 @@ void gdt_initialize() {
   GDT_INIT(0, 0xffffffff, 0x92);// Selector 0x10 will be our data
   GDT_INIT((GDTPtrInt)&myTss, sizeof(myTss), 0x89);// You can use LTR(0x18)
   GDT_INIT(0, 0xffffffff, 0x89);
-#endif
   
+  //*
   GDTEntry *e = ((GDTEntry*)__k_gdt) + 4;
   
   e->s = 1;
   e->dpl = 0;
   e->db = 1; //32 bit segment
-  e->type = 14;
+  e->type = 14;//*/
   
   _setGDT_prot2();
 }

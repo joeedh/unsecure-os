@@ -16,11 +16,12 @@
 #include "../../task/lock.h"
 #include "../../timer.h"
 
+#include "dirent.h"
 
 static List open_files;
 
 void filesystem_initialize() {
-  open_files.first = open_files.last = NULL;
+  memset(&open_files, 0, sizeof(open_files));
 }
 
 static void _set_error(int err, const char *message) {
@@ -54,7 +55,7 @@ int read(int fd, void *buf, unsigned int bytes) {
   
   int reverse = (!!(file->mode & O_PIPE_MODE)) ^ (!!(file->mode & _O_REVERSE));
   
-  if (!(file->access & O_RDONLY) || !(file->fs->accessmode(file->device) & O_RDONLY)) {
+  if (!(file->access & O_RDONLY) || !(file->fs->accessmode(file->fs, file->device) & O_RDONLY)) {
     _set_error(FILE_PERMISSIONS_ERROR, "Invalid permissions");
     klock_unlock(&file->lock);
     return 0;
@@ -68,7 +69,7 @@ int read(int fd, void *buf, unsigned int bytes) {
   
   int ret, *cursor = ((file->mode & O_PIPE_MODE) && reverse) ? &file->pipe_rcursor : &file->cursor;
   
-  ret = file->fs->pread(file->device, file->internalfd, buf, bytes, *cursor);
+  ret = file->fs->pread(file->fs, file->device, file->internalfd, buf, bytes, *cursor);
   *cursor += ret;
   
   //kprintf("cursorr: %d, ret: %d\n", *cursor, ret);
@@ -76,7 +77,7 @@ int read(int fd, void *buf, unsigned int bytes) {
   if (file->mode & O_PIPE_MODE) {
     stat sdata;
     
-    file->fs->stat(file->device, (int)file, &sdata);
+    file->fs->stat(file->fs, file->device, (int)file, &sdata, NULL);
     unsigned int size = sdata.st_msize;
     
     *cursor = *cursor % size;
@@ -88,7 +89,7 @@ int read(int fd, void *buf, unsigned int bytes) {
 
 int write(int fd, void *buf, unsigned int bytes) {
   if (!_valid_file(fd))
-    return 0;
+    return -1;
   
   FSFile *file = (FSFile*) fd;
 
@@ -96,21 +97,21 @@ int write(int fd, void *buf, unsigned int bytes) {
   
   int reverse = (!!(file->mode & O_PIPE_MODE)) ^ (!!(file->mode & _O_REVERSE));
   
-  if (!(file->access & O_RDONLY) || !(file->fs->accessmode(file->device) & O_RDONLY)) {
+  if (!(file->access & O_RDONLY) || !(file->fs->accessmode(file->fs, file->device) & O_RDONLY)) {
     _set_error(FILE_PERMISSIONS_ERROR, "Invalid permissions");
     klock_unlock(&file->lock);
-    return 0;
+    return -1;
   }
   
   if (!file->fs->pread) {
     _set_error(FILE_TYPE_ERROR, "Read not supported by the filesystem driver");
     klock_unlock(&file->lock);
-    return 0;
+    return -1;
   }
   
   int ret, *cursor = !((file->mode & O_PIPE_MODE) && reverse) ? &file->pipe_rcursor : &file->cursor;
   
-  ret = file->fs->pwrite(file->device, file->internalfd, buf, bytes, *cursor);
+  ret = file->fs->pwrite(file->fs, file->device, file->internalfd, buf, bytes, *cursor);
   *cursor += ret;
   
   //kprintf("cursorw: %d, ret: %d\n", *cursor, ret);
@@ -118,7 +119,7 @@ int write(int fd, void *buf, unsigned int bytes) {
   if (file->mode & O_PIPE_MODE) {
     stat sdata;
     
-    file->fs->stat(file->device, (int)file, &sdata);
+    file->fs->stat(file->fs, file->device, (int)file, &sdata, NULL);
     unsigned int size = sdata.st_msize;
     
     if (*cursor != (int)size) {
@@ -132,12 +133,12 @@ int write(int fd, void *buf, unsigned int bytes) {
 
 int flush(int fd) {
   if (!_valid_file(fd))
-    return 0;
+    return -1;
   
   FSFile *file = (FSFile*) fd;
 
   klock_lock(&file->lock);
-  file->fs->flush(file->device, file->internalfd);
+  file->fs->flush(file->fs, file->device, file->internalfd);
   klock_unlock(&file->lock);
   
   return 0;
@@ -158,3 +159,84 @@ int pipe(int fds[2]) {
   
   return 0;
 }
+
+extern FSInterface *rootfs;
+extern BlockDeviceIF *rootdevice;
+
+DIR *opendir(const unsigned char *path) {
+  BlockDeviceIF *device = rootdevice;
+  FSInterface *fs = rootfs;
+  
+  if (!path)
+    return NULL;
+  
+  int inode = fs->path_to_inode(fs, device, path, strlen(path));
+  if (inode < 0) {
+    return NULL;
+  }
+  
+  return opendir_inode(inode);
+}
+
+DIR *opendir_inode(int inode) {
+  BlockDeviceIF *device = rootdevice;
+  FSInterface *fs = rootfs;
+  DIR dir[25], *dir2 = NULL;
+  
+  klock_lock(&device->lock);
+  
+  memset(&dir, 0, sizeof(dir));
+  int ret = fs->opendir_inode(fs, device, &dir[0], inode);
+  
+  if (ret == 0) {
+    dir2 = (DIR*)(((unsigned char*)kmalloc(sizeof(DIR) + sizeof(dirent))) + sizeof(dirent));
+    *dir2 = dir[0];
+  }
+  
+  klock_unlock(&device->lock);
+  
+  return dir2;
+}
+
+int closedir(DIR *dir) {
+  uintptr_t addr = (uintptr_t) dir;
+  addr -= sizeof(dirent);
+  
+  kfree((void*)addr);
+  
+  return 0;
+}
+
+struct dirent *readdir(DIR *dir) {
+  if (!dir) {
+    kprintf("DIR WAS NULL!\n");
+    return NULL;
+  }
+  
+  struct dirent *entry = (struct dirent*) dir;
+  entry--;
+  
+  extern FSInterface *rootfs;
+  extern BlockDeviceIF *rootdevice;
+
+  BlockDeviceIF *device = rootdevice;
+  FSInterface *fs = rootfs;
+  
+  klock_lock(&device->lock);
+  
+  memset(entry, 0, sizeof(*entry));
+  int ret = fs->readdir(fs, device, entry, dir);
+  
+  klock_unlock(&device->lock);
+  
+  if (ret != 0) {
+    kprintf("RET: %d\n", ret);
+    return NULL;
+  } else {
+    return entry;
+  }
+}
+
+void rewinddir(DIR *dir) {
+}
+

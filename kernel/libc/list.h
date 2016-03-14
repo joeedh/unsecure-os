@@ -7,13 +7,12 @@ typedef struct Link {
 
 typedef struct LinkNode {
   struct LinkNode *next, *prev;
-  void *data;
+  volatile void *data;
 } LinkNode;
 
-typedef struct List {
+typedef volatile struct List {
   void *first, *last;
 } List;
-
 
 void klist_append(List *list, void *vitem);
 void klist_prepend(List *list, void *vitem);

@@ -16,7 +16,7 @@ typedef struct MemFile {
   int size;
 } MemFile;
 
-static int kpipefile_pread(BlockDeviceIF *device, int filefd, const char *buf, size_t bufsize, size_t fileoff) {
+static int kpipefile_pread(void *self, BlockDeviceIF *device, int filefd, const char *buf, size_t bufsize, size_t fileoff) {
   MemFile *file = (MemFile*)filefd;
   file--;
   
@@ -44,7 +44,7 @@ static int kpipefile_pread(BlockDeviceIF *device, int filefd, const char *buf, s
   return count;
 }
 
-static int kpipefile_pwrite(BlockDeviceIF *device, int filefd, const char *buf, size_t bufsize, size_t fileoff) {
+static int kpipefile_pwrite(void *self, BlockDeviceIF *device, int filefd, const char *buf, size_t bufsize, size_t fileoff) {
   MemFile *file = (MemFile*)filefd;
   file--;
   
@@ -72,15 +72,15 @@ static int kpipefile_pwrite(BlockDeviceIF *device, int filefd, const char *buf, 
   return count;
 }
 
-static int kpipefile_close(BlockDeviceIF *device, int file) {
+static int kpipefile_close(void *self, BlockDeviceIF *device, int file) {
   return 0;
 }
 
-static int kpipefile_flush(BlockDeviceIF *device, int file) {
+static int kpipefile_flush(void *self, BlockDeviceIF *device, int file) {
   return 0;
 }
 
-static int kpipefile_accessmode(BlockDeviceIF *device) {
+static int kpipefile_accessmode(void *self, BlockDeviceIF *device) {
   return O_RDWR|O_SEARCH;
 }
 

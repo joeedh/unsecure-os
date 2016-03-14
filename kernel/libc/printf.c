@@ -193,6 +193,13 @@ PRINTF {
   }
   va_end(vl);
   
+  terminal_flush();
+  
+  //add small delay
+  int i = 0;
+  while (i++ < 95000) {
+  };
+ 
   return written;
 }
 

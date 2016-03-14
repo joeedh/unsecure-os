@@ -1,11 +1,17 @@
-%define POINTERSIZE 2
-%define TASK_SIZE 52 ;size of Task struct
-%define DWSIZE 4
-%define LOCK_SIZE 8;
+%define MAX_TASKS 32
+%define GDT_SIZE 5
+%define TASK_SIZE 56 ;size of Task struct
 
+%define DWSIZE 4
 
 %define VGA_WIDTH 80
 %define VGA_HEIGHT 25
+
+%define BLUE   9   ;vga_light_blue, actually
+%define BLACK  0  
+%define WHITE  15 
+%define RED    4    
+%define GREEN  10 
 
 ; Declare constants used for creating a multiboot header.
 MBALIGN     equ  1<<0                   ; align loaded modules on page boundaries
@@ -13,7 +19,50 @@ MEMINFO     equ  1<<1                   ; provide memory map
 FLAGS       equ  MBALIGN | MEMINFO      ; this is the Multiboot 'flag' field
 MAGIC       equ  0x1BADB002             ; 'magic number' lets bootloader find the header
 CHECKSUM    equ -(MAGIC + FLAGS)        ; checksum of above, to prove we are multiboot
+
+extern terminal_set_debug;
+extern terminal_set_idebug;
+
+%macro set_debug_char 3
+  pushad;
+  
+  push dword %3
+  push dword %2
+  push dword %1
+  call terminal_set_debug
+  pop eax;
+  pop eax;
+  pop eax;
+  
+  popad;
+%endmacro
+
+%macro set_debug_int 4
+  pushad;
+  
+  push dword %4
+  push dword %3
+  push dword %2
+  push dword %1
+  
+  call terminal_set_idebug
+  
+  pop eax;
+  pop eax;
+  pop eax;
+  pop eax;
+  
+  popad;
+%endmacro
  
+; debug channels for set_debug_char 
+%define DEBUG_ISR00 4
+;00-14 are reserved
+%define DEBUG_ISR14 18
+
+%define DEBUG_EXC  3
+%define DEBUG_KEY  2
+
 ; Declare a header as in the Multiboot Standard. We put this into a special
 ; section so we can force the header to be in the start of the final program.
 ; You don't need to understand all these details as it is just magic values that
@@ -37,27 +86,31 @@ __k_gdt_end:
 ; Currently the stack pointer register (esp) points at anything and using it may
 ; cause massive harm. Instead, we'll provide our own stack. We will allocate
 ; room for a small temporary stack by creating a symbol at the bottom of it,
-; then allocating 16384 bytes for it, and finally creating a symbol at the top.
+; then allocating 65536 bytes for it, and finally creating a symbol at the top.
 global stack_top;
 
 section .bootstrap_stack, nobits
-align 4
+align 8
 stack_bottom:
-resb 16384
+resb 65536
 stack_top:
+
+global tss_stack_top, tss_stack_bottom;
+
+tss_stack_bottom:
+resb 65536
+tss_stack_top:
 
 section .irq.table, nobits
 global idt_table;
 
-align 8
-idt_table:
-  align 8
+idt_table: align 8
   resb 8*256
   
 global idt_table_end;
 idt_table_end:
 
-section .irq
+section .text
 
 __k_idtr DW 0 ; For limit storage
          DD 0 ; For base storage
@@ -66,10 +119,11 @@ global _setIRT
 _setIRT:
   cli
   
+  push ax;
   push eax;
   push ebx;
   
-  mov eax, idt_table ;- 1048576
+  mov eax, idt_table
   mov [__k_idtr+2], eax
 
   ;size of idt minus 1
@@ -78,18 +132,10 @@ _setIRT:
     
   lidt [__k_idtr];
   
-  ;pushfd
-  ;pop eax
-  ;mov ebx,4096
-  ;por eax,rbx
-  ;push eax
-  ;popfd
-  
-  
   pop ebx;
   pop eax
-    
-    ;sti
+  pop ax;
+  
   ret
   
 %define nconcat(a, b) a %+ b
@@ -132,10 +178,6 @@ extern inside_irq;
   popad
   ;sti
   
-  cli;
-  add dword [inside_irq], 0;
-  sti;
-  
   irq_iret
 %endmacro
 
@@ -143,13 +185,22 @@ extern inside_irq;
 align 8
 global _cpu_exception_flag
 _cpu_exception_flag:
-dd 0x0;
+dd 0
+
+global except_depth;
+_except_depth:
+dd 0
 
 %macro exc_wrapper 2
   pushad;
   pushfd;
   
+  set_debug_char DEBUG_EXC, 69, RED
+  
   cld
+  
+  mov eax, 1;
+  add [_except_depth], eax;
   
   mov eax, %2;
   push eax;
@@ -161,10 +212,19 @@ dd 0x0;
   call nconcat(_exc_handler, %1);
   
   pop eax;
+
+  mov eax, 1;
+  sub [_except_depth], eax;
+  
+  set_debug_char DEBUG_KEY, 101, BLACK
   
   popfd;
   popad;
 %endmacro
+
+global exr_0, exr_1, exr_2, exr_3, exr_4, exr_5;
+global exr_6, exr_7, exr_8, exr_9, exr_10, exr_11;
+global exr_12, exr_13, exr_14;
 
 align 8
 exr_0: exc_wrapper 0, 1
@@ -175,6 +235,13 @@ exr_4: exc_wrapper 4, 16
 exr_5: exc_wrapper 5, 32
 exr_6: exc_wrapper 6, 64
 exr_7: exc_wrapper 7, 128
+exr_8: exc_wrapper 8, 256
+exr_9: exc_wrapper 9, 512
+exr_10: exc_wrapper 10, 1024
+exr_11: exc_wrapper 11, 2048
+exr_12: exc_wrapper 12, 4096
+exr_13: exc_wrapper 13, 8192
+exr_14: exc_wrapper 14, 16384
   
 %macro isr_wrapper_clilock 2
   irq_entry
@@ -216,13 +283,13 @@ isr_7:
   iret;
 
 ;isr_0: isr_wrapper          0, PIC1 ;timer
-isr_1 : isr_wrapper_clilock  1, PIC1
+isr_1 : isr_wrapper_clilock  1, PIC1 ;keyboard
 isr_2 : isr_wrapper          2, PIC1
 isr_3 : isr_wrapper          3, PIC1
 isr_4 : isr_wrapper          4, PIC1
 isr_5 : isr_wrapper          5, PIC1
 isr_6 : isr_wrapper          6, PIC1
-;isr_7 : isr_wrapper          7, PIC1
+;isr_7 : isr_wrapper          7, PIC1 ;spurior irq
 isr_8 : isr_wrapper          8, PIC2
 isr_9 : isr_wrapper          9, PIC2
 isr_10: isr_wrapper         10, PIC2
@@ -303,7 +370,7 @@ _setGDT_prot2:
   mov [__k_gdtr+2], eax
 
   ;size of gdt minus 1  
-  mov ax, 39 ;__k_gdt_end - __k_gdt
+  mov ax, GDT_SIZE*8 - 1
   mov [__k_gdtr], ax
     
   lgdt [__k_gdtr];
@@ -318,7 +385,7 @@ _setGDT_prot2:
     mov gs, ax
     mov ss, ax
     
-    ;set main tss
+    ;set main TSS
     mov ax, 0x18;
     ltr ax;
     
@@ -346,9 +413,8 @@ read_eflags:
 ;section task_def nobits
 global tasks
 
-align 8
 tasks: align 8
-resb TASK_SIZE*512;
+resb TASK_SIZE*MAX_TASKS;
 tasks_end:
 
 ;section task_stuff
@@ -362,15 +428,19 @@ extern k_debug2;
 extern _isr_handler0;
 
 %macro ctx_push 0
-  pushad;
+  ;pushf;
   pushfd;
-  push ds;
+  ;pusha;
+  pushad;
+  ;push ds;
 %endmacro
 
 %macro ctx_pop 0
-  pop ds;
-  popfd;
+  ;pop ds;
   popad;
+  ;popa;
+  popfd;
+  ;popf;
 %endmacro
 
 %macro clear_nt 0  
@@ -396,14 +466,26 @@ extern _isr_handler0;
 
 extern get_next_task_timer;
 extern task_switch_granularity;
+
+isrdsf_0:
+  pushad
+  pushfd
   
+  ;set_debug_char DEBUG_ISR00, 105, GREEN
+  set_debug_int DEBUG_ISR00, 15, k_curtaskp, GREEN
+  
+  ;send ok to PIC
+  mov al,20h
+  out 20h,al
+  
+  popfd
+  popad
+  iret
+
 align 8
 ; timer/task-switcher irq
 isr_0:
-  cli ;disable interrupts for handler
-  
-  irq_entry
-  
+  ;irq_entry
   ctx_push
   
   ;increment tick counter
@@ -424,28 +506,18 @@ isr_0:
   mov esp, [esp];
   
   ;send ok to PIC
-  mov al,20h
-  out 20h,al
+  mov al, 20h
+  out PIC1, al
   
   ctx_pop
-
-  ;clear_nt
   
-  sti ;  re-enable interrupts
-  irq_iret
+  ;mov eax, dword [esp+4];
+  set_debug_int DEBUG_ISR00, 15, [k_curtaskp], GREEN
   
-global __initTask, __initTask2
-extern set_k_curtaskp;
-
-global scratchptr3;
-
-align 8;
-scratchptr: dd 32;
-align 8;
-scratchptr2: dd 32;
-align 8;
-scratchptr3: dd 32;
-
+  ;irq_iret
+  iret
+  
+global __initTask2
 extern _task_cleanup;
 
 global __switchB;
@@ -462,6 +534,8 @@ __switchB:
   
 __initTask2:
   ;save old stack position
+  mov eax, dword [k_curtaskp];
+  mov dword [eax], esp;
   mov ecx, esp;
   
   ;save third argument, pointer to new task
@@ -503,8 +577,10 @@ __initTask2:
   
   ;reset stack
   mov esp, ecx
-  
-  sti;
+  ;mov eax, dword [k_curtaskp];
+  ;mov esp, dword [eax];
+
+  ;sti;
   ret;
     
 global task_switch;
@@ -580,3 +656,8 @@ set_PIT_count:
 	ret
 
 align 8
+
+global get_eip
+get_eip:
+  mov eax, [esp];
+  ret;

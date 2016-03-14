@@ -1,4 +1,8 @@
 #include <stdint.h>
+#include "drivers/fs/fs_interface.h"
+#include "drivers/fs/fs_file.h"
+#include "drivers/fs/dirent.h"
+#include "drivers/blockdevice/blockdevice.h"
 #include "libc/stdio.h"
 #include "libc/kmalloc.h"
 
@@ -15,19 +19,75 @@ int ls_test_command(int argc, char **argv) {
   int fd = process_get_stdout(self);
   FILE _file = {fd}, *stdout = &_file;
   
-  fprintf(stdout, "Yay! Test!\nLs!\n");
-  fprintf(stdout, "Yay! Test!\nLs!\n");
-  fprintf(stdout, "Yay! Test!\nLs!\n");
-  fprintf(stdout, "Yay! Test!\nLs!\n");
-  fprintf(stdout, "Yay! Test!\nLs!\n");
-  fprintf(stdout, "Yay! Test!\nLs!\n");
-  fprintf(stdout, "Yay! Test!\nLs!\n");
+  
+  fprintf(stdout, "argc: %d, argv: %x\n", argc, argv);
+  
+  for (int i=0; i<argc; i++) {
+    fprintf(stdout, "%s ", argv[i]);
+  }
+  fprintf(stdout, "\n");
+  
+  if (argc < 2) {
+    fprintf(stdout, "missing argument\n");
+    return -1;
+  }
+  
+  return 0;
+  
+  DIR *dir = opendir_inode(2); //argv[1]);
+  struct dirent *entry;
+  
+  fprintf(stdout, "DIR: %x\n", dir);
+  entry = readdir(dir);
+  fprintf(stdout, "entry: %x\n", entry);
+  
+  if (entry) {
+    fprintf(stdout, "  %s\n", entry->d_name);
+  }
+  
+  while ((entry = readdir(dir))) {
+    fprintf(stdout, "  %s\n", entry->d_name);
+  }
+  
+  //closedir(dir);
   
   return 0;
 }
 
+int fs_test_command(int argc, char **argv) {
+  Process *self = process_get_current();
+  int fd = process_get_stdout(self);
+  FILE _file = {fd}, *stdout = &_file;
+  
+  fprintf(stdout, "\next2 test!\n\n");
+  
+  extern FSInterface *rootfs;
+  extern BlockDeviceIF *rootdevice;
+  
+  fprintf(stdout, "rootfs: %x, rootdevice: %x\n", rootfs, rootdevice);
+  //return 0;
+  
+  struct stat mstat;
+  int totentries;
+  
+  //unsigned int state = safe_entry();
+  
+  rootfs->dir_entrycount(rootfs, rootdevice, 2);
+  
+  //safe_exit(state);
+  fprintf(stdout, "fs test done!\n");
+  
+  totentries = rootfs->stat(rootfs, rootdevice, 2, &mstat, NULL);
+  
+  fprintf(stdout, "stat size: %d\n", mstat.st_msize);
+  fprintf(stdout, "totentries: %d\n", totentries);
+
+  return 0;
+}
+
 int kcli_finish(int retval, int tid, int pid) {
-  kprintf("pid: %d\n", pid);
+  //kprintf("pid: %d\n", pid);
+  
   Process *p = process_from_pid(pid);
   if (p) {
     process_close(p);
@@ -52,8 +112,8 @@ int kcli_exec(char *name, int argc, char **argv, int (*main)(int argc, char **ar
   process_start(proc);
   
   if (wait) {
-    process_wait(proc);
-    process_close(proc);
+    //process_wait(proc);
+    //process_close(proc);
   }
   
   return 0;
@@ -86,7 +146,13 @@ int kcli_main(int argc, char **argv) {
   unsigned char commandbuf[2048];
   int commandlen = 0;
   
+  unsigned char curworkingdir[MAX_PATH];
+  curworkingdir[0] = '/';
+  curworkingdir[1] = 0;
+  
   kprintf(" argc: %x, argv: %x\n", (unsigned int)argc, (unsigned int)argv);
+  terminal_flush();
+  
   //kprintf(" stdout: %d\n\n", process_get_stdout());
   Process *proc = process_get_current();
   kprintf("  proc: %x\n", proc);
@@ -95,7 +161,7 @@ int kcli_main(int argc, char **argv) {
   FILE _file = {proc->stdout};
   FILE *stdout = &_file;
   
-  kprintf("> ");
+  kprintf("%s> ", curworkingdir);
   fprintf(stdout, "YAY!\n");
   unsigned char buf[32];
   
@@ -142,7 +208,7 @@ int kcli_main(int argc, char **argv) {
         fputc(ch, stdout);
         //terminal_putchar(((unsigned char)ch) & 127);
         if (ch == '\n') {
-          fprintf(stdout, "> ");
+          fprintf(stdout, "%s> ", curworkingdir);
           //kprintf("> ");
         }
         
@@ -151,10 +217,28 @@ int kcli_main(int argc, char **argv) {
           
           if (commandlen > 0 && !strcmp(commandbuf, "ls")) {
             char **argv = kmalloc(sizeof(char*)*MAX_OUT);
+            strcpy(commandbuf+3, curworkingdir);
+            commandbuf[2] = ' ';
+            
             int argc = shlex_parse(commandbuf, argv);
+            
             fprintf(stdout, "\n");
             kcli_exec(commandbuf, argc, argv, ls_test_command, 1);
-            fprintf(stdout, "> ");
+            fprintf(stdout, "%s> ", curworkingdir);
+          } else if (commandlen > 0 && !strcmp(commandbuf, "fs")) {
+            char **argv = kmalloc(sizeof(char*)*MAX_OUT);
+            int argc = shlex_parse(commandbuf, argv);
+            
+            fprintf(stdout, "\n");
+            kcli_exec(commandbuf, argc, argv, fs_test_command, 1);
+            fprintf(stdout, "%s> ", curworkingdir);
+          } else if (!strcmp(commandbuf, "heap") || !strcmp(commandbuf, "h")) {
+            kprintblocks();
+          } else if (!strcmp(commandbuf, "s") || !strcmp(commandbuf, "bt")) {
+            extern void stacktrace();
+            
+            stacktrace();
+            kprintf(" %x\n", get_eip());
           }
           
           commandlen = 0;

@@ -23,9 +23,7 @@ extern void __initMainTask();
 extern void *stack_top;
 
 void tasks_initialize() {
-  k_totaltasks = 1;
-  k_tidbase = 1;
-  k_curtaskp = k_lasttaskp = NULL;
+  k_totaltasks = k_tidbase = 1;
   
   memset((void*)taskstacks, 0, sizeof(taskstacks));
   memset((void*)tasks, 0, sizeof(Task)*MAX_TASKS);
@@ -33,7 +31,7 @@ void tasks_initialize() {
   //init main thread
   volatile Task *task = tasks;
   
-  task->flag = TASK_ALIVE;
+  task->flag = TASK_ALIVE|TASK_SCHEDULED;
   task->tid = k_tidbase++;
   task->stack = stack_top;
   
@@ -52,8 +50,11 @@ static unsigned int alloc_stack() {
     if (taskstacks[i] == 0) {
       unsigned int addr = MEM_STACK_BASE + MEM_STACK_INDV_SIZE*i;
       
-      taskstacks[i] = addr;
+      //align to 8-byte boundary
+      if (addr & 7)
+        addr = 8 - (addr & 7);
       
+      taskstacks[i] = addr;
       return addr;
     }
   }
@@ -73,6 +74,9 @@ void free_stack(unsigned long stack) {
       break;
     }
   }
+  
+  kprintf("FAILED TO FREE STACK\n");
+  terminal_flush();
 }
 
 //*
@@ -94,7 +98,32 @@ void task_cleanup(volatile Task *task, int retval) {
 }
 //*/
 
-extern void __initTask(void *stack, void *start);
+void task_destroy(volatile Task *task, int retval, int wait_if_inside) {
+  unsigned int state = safe_entry();
+  
+  if (task->flag & TASK_SCHEDULED) {
+    task->flag = TASK_DEAD;
+    
+    //remove from schedule queue
+    task->next->prev = task->prev;
+    task->prev->next = task->next;
+    
+    task_cleanup(task, retval);
+    
+    safe_exit(state);
+    
+    //we're in the killed task? wait for task switch
+    if (wait_if_inside && task == k_curtaskp) { 
+      //while (1) {
+      //}
+    }
+    
+    return;
+  }
+  
+  safe_exit(state);
+}
+
 extern void __initTask2(volatile unsigned int *stack, void *start, volatile Task *newtask);
 extern void __saveStack();
 
@@ -167,7 +196,7 @@ int spawn_task(int argc, char **argv, int (*main)(int argc, char **argv),
 
   unsigned int addr = alloc_stack();
   
-  task->flag = TASK_ALIVE;
+  task->flag = TASK_ALIVE|TASK_SCHEDULED;
   task->stack = (void*)addr;
   task->entry = (void*)main;
   task->tid = k_tidbase++;
@@ -176,14 +205,9 @@ int spawn_task(int argc, char **argv, int (*main)(int argc, char **argv),
   task->argv = argv;
   task->pid = pid;
   
-  uintptr_t addr2 = (unsigned int) task->stack;
-  //align to eight bytes
-  addr2 -= addr2 & 7;
-  task->stack = (void*)addr2;
-  
   stack = (unsigned int*) task->stack;
 
-  kprintf(":argc: %x, argv: %x stack: %x\n", (unsigned int) argc, (unsigned int) argv, (unsigned int)task->stack);
+  //kprintf(":argc: %x, argv: %x stack: %x\n", (unsigned int) argc, (unsigned int) argv, (unsigned int)task->stack);
     
   *stack-- = (unsigned int) argv;
   *stack-- = (unsigned int) argc;
@@ -196,6 +220,15 @@ int spawn_task(int argc, char **argv, int (*main)(int argc, char **argv),
   
   int tid = task->tid;
   
+  /*
+  extern unsigned char myTss[0x64];
+  kprintf("Ready.  myTss: %x\n", myTss);
+  terminal_flush();
+  int i2=0;
+  while (i2++ < 250000) {
+  }
+  //*/
+
   //switch to task.  will re-enable interrupts
   __initTask2(stack, main, task);
   

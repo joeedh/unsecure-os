@@ -22,26 +22,6 @@
 //static Lock tty_lock;
 
 #define XY2IDX(x, y) ((((y) + terminal_row_off) % VGA_HEIGHT)*VGA_WIDTH + (x));
-
-/* Hardware text mode color constants. */
-enum vga_color {
-	COLOR_BLACK = 0,
-	COLOR_BLUE = 1,
-	COLOR_GREEN = 2,
-	COLOR_CYAN = 3,
-	COLOR_RED = 4,
-	COLOR_MAGENTA = 5,
-	COLOR_BROWN = 6,
-	COLOR_LIGHT_GREY = 7,
-	COLOR_DARK_GREY = 8,
-	COLOR_LIGHT_BLUE = 9,
-	COLOR_LIGHT_GREEN = 10,
-	COLOR_LIGHT_CYAN = 11,
-	COLOR_LIGHT_RED = 12,
-	COLOR_LIGHT_MAGENTA = 13,
-	COLOR_LIGHT_BROWN = 14,
-	COLOR_WHITE = 15,
-};
  
 uint8_t make_color(enum vga_color fg, enum vga_color bg) {
 	return fg | bg << 4;
@@ -57,16 +37,27 @@ uint16_t make_vgaentry(unsigned char c, uint8_t color) {
 static const size_t VGA_WIDTH = 80;
 static const size_t VGA_HEIGHT = 25;
  
-size_t terminal_row, terminal_row_off;
-size_t terminal_column;
-uint8_t terminal_color;
-uint16_t* terminal_buffer_out;
-extern uint16_t* terminal_buffer;
-volatile unsigned int tty_cache_len = 0;
+volatile size_t terminal_row, terminal_row_off;
+volatile size_t terminal_column;
+volatile uint8_t terminal_color;
+uint16_t * volatile terminal_buffer_out;
+extern uint16_t * volatile terminal_buffer;
+
+static volatile unsigned int tty_cache_len = 0;
+static volatile unsigned int debug_entries[32] = {0,};
+static volatile unsigned int debug_backup[32] = {0,};
 
 void terminal_buffer_flip() {
   //klock_lock(&tty_lock);
   unsigned int state = safe_entry();
+  
+  int ilen = (int)(sizeof(debug_entries) / sizeof(int));
+  for (int i=0; i<ilen; i++) {
+    int i2 = VGA_WIDTH*((terminal_row_off) % VGA_HEIGHT) + i + 5;
+    
+    debug_backup[i] = terminal_buffer[i2];
+    terminal_buffer[i2] = debug_entries[i];
+  }
   
   if (terminal_row_off == 0) {
     smemcpy(terminal_buffer_out, terminal_buffer, VGA_WIDTH*VGA_HEIGHT);
@@ -80,6 +71,13 @@ void terminal_buffer_flip() {
             VGA_WIDTH*(VGA_HEIGHT-terminal_row_off), b, VGA_WIDTH*terminal_row_off);
   }
   
+  for (int i=0; i<ilen; i++) {
+    int i2 = VGA_WIDTH*((terminal_row_off) % VGA_HEIGHT) + i + 5;
+    
+    debug_backup[i] = terminal_buffer[i2];
+    terminal_buffer[i2] = debug_backup[i];
+  }
+  
   safe_exit(state);
   
   //klock_unlock(&tty_lock);
@@ -87,6 +85,40 @@ void terminal_buffer_flip() {
 
 void terminal_flush() {
   terminal_buffer_flip();
+}
+
+static unsigned char hexline[] = "0123456789ABCDEF";
+
+void terminal_set_idebug(int basechannel, int len, int n, int clr) {
+  int i = basechannel + len - 1;
+  int sign = n < 0;
+  
+  //clear
+  for (int j=basechannel; j<basechannel+len; j++) {
+    terminal_buffer_out[5+j] = debug_entries[j] = make_vgaentry(' ', 0);
+  }
+  
+  n = sign ? -n : n;
+  
+  terminal_buffer_out[5+i] = debug_entries[i] = make_vgaentry('h', clr);
+  i--;
+  
+  while (n > 0 && i >= basechannel) {
+    unsigned char chr = hexline[(n % 16)];
+    
+    terminal_buffer_out[5+i] = debug_entries[i] = make_vgaentry(chr, clr);
+    
+    n /= 16;
+    i--;
+  }
+  
+  if (sign && i >= basechannel) {
+    terminal_buffer_out[5+i] = debug_entries[i] = make_vgaentry('-', clr);
+  }
+}
+
+void terminal_set_debug(unsigned int channel, unsigned int chr, unsigned int clr) {
+  terminal_buffer_out[5+channel] = debug_entries[channel] = make_vgaentry(chr, clr);
 }
 
 void terminal_initialize() {

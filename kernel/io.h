@@ -1,7 +1,7 @@
 #ifndef _K_IO_H
 #define _K_IO_H
 
-#define MAX_TASKS 512 //keep up-to-date with nasm code
+#define MAX_TASKS 32 //keep up-to-date with nasm code
 
 #define MEM_STACK_BASE (1024*1024*12)
 #define MEM_STACK_INDV_SIZE (1024*512)
@@ -20,7 +20,9 @@
 #endif
 
 extern volatile unsigned int _cpu_exception_flag;
+
 extern unsigned int read_eflags();
+extern int get_eip();
 
 //disables interrupts and returns state used to reenable later (if they were already enabled)
 static inline unsigned int safe_entry() {
@@ -76,6 +78,22 @@ static inline unsigned int read_eax(void)
     asm volatile ( "mov %%eax, %0" : "=r"(val) );
     return val;
 }
+
+static inline unsigned int read_esp(void)
+{
+    unsigned int val;
+    asm volatile ( "mov %%esp, %0" : "=r"(val) );
+    return val;
+}
+
+//*
+static inline unsigned int read_ebp(void)
+{
+    unsigned int val;
+    asm volatile ( "mov %%ebp, %0" : "=r"(val) );
+    return val;
+}
+//*/
 
 static inline unsigned short read_ax(void)
 {

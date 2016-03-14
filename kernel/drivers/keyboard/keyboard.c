@@ -103,12 +103,14 @@ void _isr_handler1() {
     
     //convert code to more ascii-like codepage
     ch = scancode_set2[ch];
+    
     if (code & 128) {
       code = ch | 128;
     } else {
       code = ch;
     }
     
+    terminal_set_debug(DEBUG_KEY, code, COLOR_LIGHT_BLUE);
     keypress[ch] = ch != code;
     
     kb_queue[kb_queue_b] = code;

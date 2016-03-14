@@ -16,8 +16,6 @@
 #define PIC_EOI		0x20		/* End-of-interrupt command code */
  
 void interrupts_initialize();
-void interrupts_add_handler(unsigned int irq, int (*cb)(unsigned int irq));
-void interrupts_remove_handler(unsigned int irq, int (*cb)(unsigned int irq));
 
 extern volatile unsigned int inside_irq;
 

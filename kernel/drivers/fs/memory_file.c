@@ -17,7 +17,7 @@ typedef struct MemFile {
   int written;
 } MemFile;
 
-static int kmemfile_pread(BlockDeviceIF *device, int filefd, const char *buf, size_t bufsize, size_t fileoff) {
+static int kmemfile_pread(void *self, BlockDeviceIF *device, int filefd, const char *buf, size_t bufsize, size_t fileoff) {
   MemFile *file = (MemFile*)filefd;
   file--;
   
@@ -43,7 +43,7 @@ static int kmemfile_pread(BlockDeviceIF *device, int filefd, const char *buf, si
   return i;
 }
 
-static int kmemfile_pwrite(BlockDeviceIF *device, int filefd, const char *buf, size_t bufsize, size_t fileoff) {
+static int kmemfile_pwrite(void *self, BlockDeviceIF *device, int filefd, const char *buf, size_t bufsize, size_t fileoff) {
   MemFile *file = (MemFile*)filefd;
   file--;
   
@@ -72,19 +72,19 @@ static int kmemfile_pwrite(BlockDeviceIF *device, int filefd, const char *buf, s
   return i;
 }
 
-static int kmemfile_close(BlockDeviceIF *device, int file) {
+static int kmemfile_close(void *self, BlockDeviceIF *device, int file) {
   return 0;
 }
 
-static int kmemfile_flush(BlockDeviceIF *device, int file) {
+static int kmemfile_flush(void *self, BlockDeviceIF *device, int file) {
   return 0;
 }
 
-static int kmemfile_accessmode(BlockDeviceIF *device) {
+static int kmemfile_accessmode(void *self, BlockDeviceIF *device) {
   return O_RDWR|O_SEARCH;
 }
 
-static int kmemfile_fstat(BlockDeviceIF *device, int filefd, struct stat *buf) {
+static int kmemfile_fstat(void *self, BlockDeviceIF *device, int filefd, struct stat *buf) {
   if (buf == NULL)
     return -1;
   

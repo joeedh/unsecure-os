@@ -179,13 +179,19 @@ void libk_initialize() {
 }
 
 int kerror(int code, char *message) {
-  terminal_clear();
+  asm("CLI");
+  
+  //terminal_clear();
   
   int ret=0;
   
   ret += kprintf("===========================================================\n");
   ret += kprintf("KERNEL ERROR:%d: %s\n", code, message);
   ret += kprintf("===========================================================\n");
+  
+  //freeze
+  while (1) {
+  }
   
   return ret;
 }

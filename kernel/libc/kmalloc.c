@@ -42,11 +42,12 @@ typedef struct MemNode {
 static List freelist, alloclist;
 
 void kmalloc_init() {
-  smemset((short*)MEM_BITMAP_START, 0, MEM_BITMAP_SIZE/2+32);
+  //smemset((short*)MEM_BITMAP_START, 0, MEM_BITMAP_SIZE/2+32);
   
   klock_init(&kmalloc_lock);
   
-  freelist.first = freelist.last = alloclist.first = alloclist.last = NULL;
+  memset(&freelist, 0, sizeof(freelist));
+  memset(&alloclist, 0, sizeof(alloclist));
   
   //the motherblock!
   MemNode *head = (MemNode*)MEM_BASE;
@@ -62,6 +63,7 @@ void kmalloc_init() {
   
   head->pair = tail;
   tail->pair = head;
+  head->pid = tail->pid = 0;
   head->checksum = MAGIC_HEAD_CHECKSUM;
   tail->checksum = MAGIC_TAIL_CHECKSUM;
   
@@ -195,8 +197,13 @@ static int merge_blocks(MemNode *mem, int depth) {
 int _kfree(void *vmem, char *file, int line) {
   if (!vmem) 
     return 1;
-  if (!_ktestmem(vmem))
+  
+  klock_lock(&kmalloc_lock);
+  
+  if (!_ktestmem(vmem)) {
+    klock_unlock(&kmalloc_lock);
     return 1;
+  }
   
   MemNode *mem = vmem;
   mem--;
@@ -206,7 +213,6 @@ int _kfree(void *vmem, char *file, int line) {
   
   //XXX update linked lists
   ;
-  klock_lock(&kmalloc_lock);
   
   klist_remove(&alloclist, mem);
   klist_append(&freelist, mem);
