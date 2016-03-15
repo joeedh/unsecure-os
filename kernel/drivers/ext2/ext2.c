@@ -730,6 +730,7 @@ FSInterface *kext2fs_create(BlockDeviceIF *device) {
   ext2fs *fs = kmalloc(sizeof(*fs));
   
   memset(fs, 0, sizeof(*fs));
+  _fs_fsinterface_init((FSInterface*)fs);
   
   fs->readmeta = 1;
   fs->allowed_access = fs->access = O_RDONLY|O_SEARCH|O_EXEC;

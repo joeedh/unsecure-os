@@ -20,8 +20,17 @@
 
 static List open_files;
 
+int bad_fsdev(FSInterface *fs, BlockDeviceIF *device) {
+  return fs->magic != FSINTERFACE_MAGIC || device->magic != BLOCKDEVICE_MAGIC;
+}
+
 void filesystem_initialize() {
   memset(&open_files, 0, sizeof(open_files));
+}
+
+void _fs_fsinterface_init(FSInterface *fs) {
+  klock_init(&fs->lock);
+  fs->magic = FSINTERFACE_MAGIC;
 }
 
 static void _set_error(int err, const char *message) {
@@ -43,14 +52,14 @@ int _valid_file(int fd) {
   if (file->magic != _FILE_MAGIC)
     return 0;
   
-  return 1;
+  return bad_fsdev(file->fs, file->device);
 }
+
 int read(int fd, void *buf, unsigned int bytes) {
   if (!_valid_file(fd))
     return 0;
   
   FSFile *file = (FSFile*) fd;
-  
   klock_lock(&file->lock);
   
   int reverse = (!!(file->mode & O_PIPE_MODE)) ^ (!!(file->mode & _O_REVERSE));
@@ -167,23 +176,45 @@ DIR *opendir(const unsigned char *path) {
   BlockDeviceIF *device = rootdevice;
   FSInterface *fs = rootfs;
   
-  if (!path)
-    return NULL;
-  
-  int inode = fs->path_to_inode(fs, device, path, strlen(path));
-  if (inode < 0) {
+  if (bad_fsdev(fs, device)) {
+    kprintf("File system driver corruption!\n");
     return NULL;
   }
   
-  return opendir_inode(inode);
+  if (!path)
+    return NULL;
+
+  klock_lock(&rootdevice->lock);
+  klock_lock(&rootfs->lock);
+  
+  int inode = fs->path_to_inode(fs, device, path, strlen(path));
+  if (inode < 0) {
+    klock_unlock(&rootfs->lock);
+    klock_unlock(&rootdevice->lock);
+    return NULL;
+  }
+  
+  DIR *ret = opendir_inode(inode);
+  
+  klock_unlock(&rootfs->lock);
+  klock_unlock(&rootdevice->lock);
+  
+  return ret;
 }
 
 DIR *opendir_inode(int inode) {
   BlockDeviceIF *device = rootdevice;
   FSInterface *fs = rootfs;
-  DIR dir[25], *dir2 = NULL;
   
+  if (bad_fsdev(fs, device)) {
+    kprintf("File system driver corruption!\n");
+    return NULL;
+  }
+  
+  klock_lock(&fs->lock);
   klock_lock(&device->lock);
+  
+  DIR dir[25], *dir2 = NULL;
   
   memset(&dir, 0, sizeof(dir));
   int ret = fs->opendir_inode(fs, device, &dir[0], inode);
@@ -194,20 +225,37 @@ DIR *opendir_inode(int inode) {
   }
   
   klock_unlock(&device->lock);
+  klock_unlock(&fs->lock);
   
   return dir2;
 }
 
 int closedir(DIR *dir) {
+  if (bad_fsdev(rootfs, rootdevice)) {
+    kprintf("File system driver corruption!\n");
+    return -1;
+  }
+  
+  klock_lock(&rootfs->lock);
+  klock_lock(&rootdevice->lock);
+  
   uintptr_t addr = (uintptr_t) dir;
   addr -= sizeof(dirent);
   
   kfree((void*)addr);
+
+  klock_unlock(&rootdevice->lock);
+  klock_unlock(&rootfs->lock);
   
   return 0;
 }
 
 struct dirent *readdir(DIR *dir) {
+  if (bad_fsdev(rootfs, rootdevice)) {
+    kprintf("File system driver corruption!\n");
+    return NULL;
+  }
+  
   if (!dir) {
     kprintf("DIR WAS NULL!\n");
     return NULL;
@@ -223,10 +271,12 @@ struct dirent *readdir(DIR *dir) {
   FSInterface *fs = rootfs;
   
   klock_lock(&device->lock);
+  klock_lock(&fs->lock);
   
   memset(entry, 0, sizeof(*entry));
   int ret = fs->readdir(fs, device, entry, dir);
   
+  klock_unlock(&fs->lock);
   klock_unlock(&device->lock);
   
   if (ret != 0) {
@@ -238,5 +288,9 @@ struct dirent *readdir(DIR *dir) {
 }
 
 void rewinddir(DIR *dir) {
+  if (bad_fsdev(rootfs, rootdevice)) {
+    kprintf("File system driver corruption!\n");
+    return;
+  }
 }
 

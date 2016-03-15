@@ -95,6 +95,8 @@ size_t _kblockdevice_default_write(void *vself, size_t start, size_t size, void 
 void _kblockdevice_init(void *vself) {
   BlockDeviceIF *self = vself;
   
+  self->magic = BLOCKDEVICE_MAGIC;
+  
   if (!self->read)
     self->read = _kblockdevice_default_read;
   if (!self->write)

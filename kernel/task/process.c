@@ -22,6 +22,8 @@ static Lock plock;
 static Process kernelproc;
 static LinkNode kernelproc_thread;
 
+extern Process processes[MAX_TASKS];
+
 static void _nullop_proc_finishfunc(int retval, int tid, int pid) {
 }
 
@@ -29,6 +31,7 @@ void process_initialize() {
   pidgen = 1;
   klock_init(&plock);
   
+  memset(processes, 0, sizeof(processes));
   memset(&running_processes, 0, sizeof(running_processes));
   memset(&finishing_processes, 0, sizeof(finishing_processes));
   
@@ -122,12 +125,52 @@ int process_get_stderr(Process *p) {
   return p ? p->stderr : -1;
 }
 
+
+static Process *alloc_process() {
+  klock_lock(&plock);
+  unsigned int state = safe_entry(); //disable interrupts;
+  Process *p = NULL;
+  int i = 0;
+  
+  for (i=0; i<MAX_TASKS; i++) {
+    if (!processes[i].used) {
+      p = processes + i;
+      p->used = 1;
+      break;
+    }
+  }
+  
+  if (i == MAX_TASKS) {
+    klock_unlock(&plock);
+    safe_exit(state);
+
+    kerror(0, "Hit maximum number of processors!");
+    return NULL;
+  }
+  
+  klock_unlock(&plock);
+  safe_exit(state);
+  
+  return processes + i;
+}
+
+static void free_process(Process *p) {
+  klock_lock(&plock);
+  unsigned int state = safe_entry(); //disable interrupts;
+  
+  //clear p->used
+  p->used = 0;
+  
+  klock_unlock(&plock);
+  safe_exit(state);
+}
+
 //returns. . .pid?
 Process *spawn_process(const char *name, int argc, char **argv, int (*main)(int argc, char **argv)) {
   klock_lock(&plock);
   unsigned int state = safe_entry();
   
-  Process *process = kmalloc(sizeof(Process));
+  Process *process = alloc_process(); //kmalloc(sizeof(Process));
 
   memset(process, 0, sizeof(Process));
 
@@ -266,7 +309,7 @@ int process_close(Process *process) {
   process->state |= PROC_ZOMBIE;
   process->state &= ~PROC_RUNNING;
   
-  kfree(process);
+  free_process(process); //kfree(process);
   
   safe_exit(state);
   klock_unlock(&plock);

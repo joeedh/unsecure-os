@@ -1,5 +1,7 @@
 %define MAX_TASKS 32
+
 %define GDT_SIZE 5
+%define PROCESS_SIZE 400
 %define TASK_SIZE 56 ;size of Task struct
 
 %define DWSIZE 4
@@ -16,9 +18,12 @@
 ; Declare constants used for creating a multiboot header.
 MBALIGN     equ  1<<0                   ; align loaded modules on page boundaries
 MEMINFO     equ  1<<1                   ; provide memory map
-FLAGS       equ  MBALIGN | MEMINFO      ; this is the Multiboot 'flag' field
-MAGIC       equ  0x1BADB002             ; 'magic number' lets bootloader find the header
-CHECKSUM    equ -(MAGIC + FLAGS)        ; checksum of above, to prove we are multiboot
+;MODINFO     equ  1<<3
+;DRIVEINFO   equ  1<<7
+
+FLAGS       equ  MBALIGN | MEMINFO   ; this is the Multiboot 'flag' field
+MAGIC       equ  0x1BADB002          ; 'magic number' lets bootloader find the header
+CHECKSUM    equ -(MAGIC + FLAGS)     ; checksum of above, to prove we are multiboot
 
 extern terminal_set_debug;
 extern terminal_set_idebug;
@@ -69,10 +74,47 @@ extern terminal_set_idebug;
 ; is documented in the multiboot standard. The bootloader will search for this
 ; magic sequence and recognize us as a multiboot kernel.
 section .multiboot
-align 4
-	dd MAGIC
-	dd FLAGS
-	dd CHECKSUM
+align 8
+
+;size of tag header is added automatically
+%macro tag 3 ;type, flags, size
+  dw %1;
+  dw %2;
+  dd %3 + 8;
+%endmacro
+
+%macro optional_tag 3 ;type, flags, size
+  dw %1;
+  dw %2 | 1;
+  dd %3 + 8;
+%endmacro
+
+;let's try multiboot2 spec
+  dd 0xE85250D6
+  dd 0x0 ;arch, 0 for x86 32-bit protected mode
+  dd 16  ;header length
+  ;dd -(0xE85250D6 + 16) ;checksum
+  dd -0xe85250e6 ;checksum
+
+;tag1:
+;  optional_tag 1,0,4*32
+;bootinfo:
+;  times 32 dd 0;
+tag2:
+  tag 3,0,4 ;entry address tag
+  dd _start;
+
+;tag3: ;alignment
+;  tag 6,0,4 ;module alignment flag
+;  dd 0 ;unused
+;tag4: ;memory
+;  tag 4,0,8
+;_mem_upper:  dd 0;
+;_mem_lower:  dd 0;
+  
+;	dd MAGIC
+;	dd FLAGS
+;	dd CHECKSUM
 
 section .gdt, nobits
 global __k_gdt;
@@ -95,9 +137,25 @@ stack_bottom:
 resb 65536
 stack_top:
 
+resb 16; ;paranoia safety pad between stack and task/process data
+
+global tasks, terminal_buffer
+
+terminal_buffer: align 8
+resb VGA_HEIGHT*VGA_WIDTH*2;
+
+tasks: align 8
+resb TASK_SIZE*MAX_TASKS;
+tasks_end:
+
+global processes;
+processes: align 8
+  resb PROCESS_SIZE*MAX_TASKS;
+processes_end:
+
 global tss_stack_top, tss_stack_bottom;
 
-tss_stack_bottom:
+tss_stack_bottom: align 8
 resb 65536
 tss_stack_top:
 
@@ -330,13 +388,17 @@ _start:
 	; our stack (as it grows downwards).
 	mov esp, stack_top
  
+  ;push boot info pointer to stack
+   push ebx;
+  
 	; We are now ready to actually execute C code. We cannot embed that in an
 	; assembly file, so we'll create a kernel.c file in a moment. In that file,
 	; we'll create a C entry point called kernel_main and call it here.
 	
    extern kernel_main
 	 call kernel_main
-  
+   pop ebx;
+   
 	; In case the function returns, we'll want to put the computer into an
 	; infinite loop. To do that, we use the clear interrupt ('cli') instruction
 	; to disable interrupts, the halt instruction ('hlt') to stop the CPU until
@@ -410,14 +472,6 @@ read_eflags:
   ; mov eax, 1
   ret
 
-;section task_def nobits
-global tasks
-
-tasks: align 8
-resb TASK_SIZE*MAX_TASKS;
-tasks_end:
-
-;section task_stuff
 align 8
 
 extern next_task;
@@ -511,8 +565,12 @@ isr_0:
   
   ctx_pop
   
-  ;mov eax, dword [esp+4];
-  set_debug_int DEBUG_ISR00, 15, [k_curtaskp], GREEN
+  push eax;
+  mov eax, dword [esp+4];
+  set_debug_int DEBUG_ISR00, 15, eax, GREEN
+  pop eax;
+  
+  ;set_debug_int DEBUG_ISR00, 15, [k_curtaskp], GREEN
   
   ;irq_iret
   iret
@@ -637,10 +695,6 @@ __initMainTask:
 ;section .vga_tty nobits
 
 global terminal_buffer
-
-align 8;
-terminal_buffer:
-resb VGA_HEIGHT*VGA_WIDTH*2;
 
 ;section .timerinit
 

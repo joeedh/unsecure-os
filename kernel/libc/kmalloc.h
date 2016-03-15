@@ -5,6 +5,10 @@
 #include <stddef.h>
 
 void kmalloc_init();
+void kmalloc_init_with_holes();
+
+//can only be run before kmalloc_init***
+void kmalloc_add_hole(unsigned int base, unsigned int len, const unsigned char *name);
 
 void *_kmalloc(size_t size, char *file, int line);
 int _kfree(void *mem, char *file, int line);

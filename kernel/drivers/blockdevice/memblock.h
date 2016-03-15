@@ -8,8 +8,9 @@ typedef struct MemBlockDevice {
   unsigned char *data;
   unsigned int blocksize;
   unsigned int totblocks;
+  unsigned int shouldfree;
 } MemBlockDevice;
 
-BlockDeviceIF *kmemblock_new(int blocksize, int blockcount);
+BlockDeviceIF *kmemblock_new(int blocksize, int blockcount, void *existing);
   
 #endif /* _MEMBLOCK_H */

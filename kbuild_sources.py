@@ -5,6 +5,7 @@ import os.path, os
 
 kbuild_sources = glob("kernel/*.c")
 kbuild_sources += glob("kernel/drivers/tty/*.c")
+kbuild_sources += glob("kernel/drivers/pci/*.c")
 kbuild_sources += glob("kernel/drivers/blockdevice/*.c")
 kbuild_sources += glob("kernel/drivers/ext2/*.c")
 kbuild_sources += glob("kernel/drivers/fs/*.c")

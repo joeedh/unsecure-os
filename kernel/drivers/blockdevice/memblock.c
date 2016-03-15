@@ -50,7 +50,7 @@ static size_t close_device(void *vself) {
   return 0;
 }
 
-BlockDeviceIF *kmemblock_new(int blcksize, int blockcount) {
+BlockDeviceIF *kmemblock_new(int blcksize, int blockcount, void *existing) {
   MemBlockDevice *dev = kmalloc(sizeof(MemBlockDevice));
   
   memset(dev, 0, sizeof(*dev));
@@ -58,7 +58,13 @@ BlockDeviceIF *kmemblock_new(int blcksize, int blockcount) {
   dev->blocksize = blcksize;
   dev->totblocks = blockcount;
   
-  dev->data = kmalloc(blcksize*blockcount);
+  if (existing) {
+    dev->shouldfree = 0;
+    dev->data = existing;
+  } else {
+    dev->data = kmalloc(blcksize*blockcount);
+    dev->shouldfree = 1;
+  }
   
   _kblockdevice_init(dev);
   

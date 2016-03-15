@@ -16,25 +16,25 @@ enum {
 typedef struct Process {
   struct Process *next, *prev;
   
-  int pid;
+  volatile int pid;
   char name[32];
   char calling_path[32];
   char working_path[255];
   
-  void *entryfunc;
+  volatile void *entryfunc;
   void (*finishfunc)(int retval, int tid, int pid);
   
   int argc;
   char **argv;
   
-  int stdin, stdout, stderr;
+  volatile int stdin, stdout, stderr;
   
   List memory; //list of MemNode references
   List open_files;
   List threads;
   
   volatile int flags, state;
-  int retval;
+  volatile int retval, used;
 } Process;
 
 void process_initialize();

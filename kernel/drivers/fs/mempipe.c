@@ -84,16 +84,17 @@ static int kpipefile_accessmode(void *self, BlockDeviceIF *device) {
   return O_RDWR|O_SEARCH;
 }
 
-FSInterface kpipefile_iface;
-
 int kpipefile_create(int size) {
-  memset(&kpipefile_iface, 0, sizeof(kpipefile_iface));
+  FSInterface *fs = kmalloc(sizeof(*fs));
   
-  kpipefile_iface.flush = kpipefile_flush;
-  kpipefile_iface.pread = kpipefile_pread;
-  kpipefile_iface.pwrite = kpipefile_pwrite;
-  kpipefile_iface.close = kpipefile_close;
-  kpipefile_iface.accessmode = kpipefile_accessmode;
+  memset(fs, 0, sizeof(*fs));
+  _fs_fsinterface_init(fs);
+  
+  fs->flush = kpipefile_flush;
+  fs->pread = kpipefile_pread;
+  fs->pwrite = kpipefile_pwrite;
+  fs->close = kpipefile_close;
+  fs->accessmode = kpipefile_accessmode;
   
   FSFile *file = kmalloc(sizeof(FSFile));
   
@@ -103,7 +104,7 @@ int kpipefile_create(int size) {
   file->access = O_RDWR|O_SEARCH;
   
   file->device = NULL;
-  file->fs = &kpipefile_iface;
+  file->fs = fs;
   file->inode = 0;
   file->custom = size;
   

@@ -6,6 +6,7 @@
 
 #include "../blockdevice/blockdevice.h"
 #include "../fs/dirent.h"
+#include "../../task/lock.h"
 
 #define MAX_PATH 255
 
@@ -54,8 +55,11 @@ enum {
 //note that all string parameters are null terminated, even if they require
 //their buffer size be passed in as well.
 
+#define FSINTERFACE_MAGIC 34668324
+
 //device parameter is a BlockDeviceIF
 typedef struct FSInterface {
+  unsigned int magic;
   char *name;
   
   //see ACCESS_*** enum
@@ -108,6 +112,8 @@ typedef struct FSInterface {
   int (*chmod)(void *self, BlockDeviceIF *device, int inode, int permissions);
   int (*chuser)(void *self, BlockDeviceIF *device, int inode, int userid);
   int (*chgroup)(void *self, BlockDeviceIF *device, int inode, int groupid);
+  
+  Lock lock;
 } FSInterface;
 
 #endif /* _FS_INTERFACE_H */

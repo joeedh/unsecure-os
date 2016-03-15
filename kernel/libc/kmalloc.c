@@ -41,6 +41,77 @@ typedef struct MemNode {
 
 static List freelist, alloclist;
 
+//e.g. memory-mappped device data, acpi, etc
+typedef struct MemHole {
+  unsigned int base;
+  unsigned int length;
+  const unsigned char *name;
+} MemHole;
+
+static MemHole holes[32];
+static int tothole = 0;
+
+void kmalloc_add_hole(unsigned int base, unsigned int len, const unsigned char *name) {
+  MemHole *hole = holes + tothole++;
+  
+  hole->base = base;
+  hole->length = len;
+  hole->name = name;
+}
+
+void kmalloc_init_with_holes() {
+  //smemset((short*)MEM_BITMAP_START, 0, MEM_BITMAP_SIZE/2+32);
+  
+  klock_init(&kmalloc_lock);
+  
+  memset(&freelist, 0, sizeof(freelist));
+  memset(&alloclist, 0, sizeof(alloclist));
+  
+  //the motherblock!
+  //we're assuming it's not within a memory mapped hole. . .
+  
+  unsigned char *base = (unsigned char*)MEM_BASE;
+  MemHole *hole = holes;
+  
+  int i = 0;
+  for (i=0; i<tothole; i++, hole++) {
+    if (hole->base >= MEM_BASE) {
+      break;
+    }
+  }
+  
+  //add closing hole at end of memory
+  holes[tothole++].base = MEM_END;
+  holes[tothole].length = 0;
+  
+  for (; i<tothole; i++, hole++) {
+    MemNode *head = (MemNode*)base;
+    size_t len = hole[i].base - ((unsigned int)base) - 256; //add some protection from buffer overruns
+    
+    if (len < sizeof(MemNode)*2+4) {
+      base = (unsigned char*)(hole[i].base + hole[i].length);
+      continue;
+    }
+    
+    head->file = NULL; 
+    head->pair = NULL;
+    head->line = head->pid = 0;
+    
+    head->size = len - sizeof(MemNode)*2;
+    
+    MemNode *tail = (MemNode*)( ((unsigned char*)head) + sizeof(MemNode) + len );
+    *tail = *head;
+    
+    head->pair = tail;
+    tail->pair = head;
+    head->pid = tail->pid = 0;
+    head->checksum = MAGIC_HEAD_CHECKSUM;
+    tail->checksum = MAGIC_TAIL_CHECKSUM;
+    
+    klist_append(&freelist, head);
+  }
+}
+
 void kmalloc_init() {
   //smemset((short*)MEM_BITMAP_START, 0, MEM_BITMAP_SIZE/2+32);
   

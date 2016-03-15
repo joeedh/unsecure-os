@@ -5,7 +5,11 @@
 #include "stdint.h"
 #include "../../task/lock.h"
 
+#define BLOCKDEVICE_MAGIC 239458355
+
 typedef struct BlockDeviceIF {
+  unsigned int magic;
+  
   size_t (*blocksize   )(void *self);
   size_t (*disksize    )(void *self);
   size_t (*readblock   )(void *self, size_t block, void *buf);

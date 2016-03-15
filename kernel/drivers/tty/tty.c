@@ -19,7 +19,7 @@
 #include "tty.h"
 #include "../../task/lock.h"
 
-//static Lock tty_lock;
+static Lock tty_lock = {0,};
 
 #define XY2IDX(x, y) ((((y) + terminal_row_off) % VGA_HEIGHT)*VGA_WIDTH + (x));
  
@@ -48,8 +48,7 @@ static volatile unsigned int debug_entries[32] = {0,};
 static volatile unsigned int debug_backup[32] = {0,};
 
 void terminal_buffer_flip() {
-  //klock_lock(&tty_lock);
-  unsigned int state = safe_entry();
+  //unsigned int state = safe_entry();
   
   int ilen = (int)(sizeof(debug_entries) / sizeof(int));
   for (int i=0; i<ilen; i++) {
@@ -78,13 +77,15 @@ void terminal_buffer_flip() {
     terminal_buffer[i2] = debug_backup[i];
   }
   
-  safe_exit(state);
-  
-  //klock_unlock(&tty_lock);
+  //safe_exit(state);
 }
 
 void terminal_flush() {
+  klock_lock(&tty_lock);
+  
   terminal_buffer_flip();
+  
+  klock_unlock(&tty_lock);
 }
 
 static unsigned char hexline[] = "0123456789ABCDEF";
@@ -135,17 +136,17 @@ void terminal_initialize() {
 		}
 	}
   
-  //klock_init(&tty_lock);
+  klock_init(&tty_lock);
 }
 
 void terminal_clear() {
-  //klock_lock(&tty_lock);
+  klock_lock(&tty_lock);
   
   memset(terminal_buffer, 0, VGA_WIDTH*VGA_HEIGHT*2);
   terminal_row = terminal_column = 0;
-  //terminal_buffer_flip();
+  terminal_buffer_flip();
   
-  //klock_unlock(&tty_lock);
+  klock_unlock(&tty_lock);
 }
  
 void terminal_setcolor(uint8_t color) {
@@ -173,8 +174,8 @@ void terminal_rowpush() {
 }
 
 void terminal_putchar(unsigned char c) {
-  volatile unsigned int state = safe_entry();
-  //klock_lock(&tty_lock);
+  //volatile unsigned int state = safe_entry();
+  klock_lock(&tty_lock);
   
   tty_cache_len++;
   
@@ -182,8 +183,8 @@ void terminal_putchar(unsigned char c) {
     terminal_putchar(' ');
     terminal_putchar(' ');
     
-    safe_exit(state);
-    //klock_unlock(&tty_lock);
+    //safe_exit(state);
+    klock_unlock(&tty_lock);
     return;
   }
   
@@ -230,12 +231,13 @@ void terminal_putchar(unsigned char c) {
     }
   }
   
-  //klock_unlock(&tty_lock);
-  safe_exit(state);
+  klock_unlock(&tty_lock);
+  //safe_exit(state);
 }
  
 void terminal_writestring(const unsigned char* data) {
 	size_t datalen = strlen(data);
+  
 	for (size_t i = 0; i < datalen; i++)
 		terminal_putchar(data[i]);
 }

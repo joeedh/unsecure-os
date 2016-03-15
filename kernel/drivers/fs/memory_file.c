@@ -98,17 +98,18 @@ static int kmemfile_fstat(void *self, BlockDeviceIF *device, int filefd, struct 
   return 0;
 }
 
-FSInterface kmemfile_iface;
-
 int kmemfile_create(int size) {
-  memset(&kmemfile_iface, 0, sizeof(kmemfile_iface));
+  FSInterface *fs = kmalloc(sizeof(*fs));
   
-  kmemfile_iface.flush = kmemfile_flush;
-  kmemfile_iface.pread = kmemfile_pread;
-  kmemfile_iface.pwrite = kmemfile_pwrite;
-  kmemfile_iface.close = kmemfile_close;
-  kmemfile_iface.accessmode = kmemfile_accessmode;
-  kmemfile_iface.fstat = kmemfile_fstat;
+  memset(fs, 0, sizeof(*fs));
+  _fs_fsinterface_init(fs);
+
+  fs->flush = kmemfile_flush;
+  fs->pread = kmemfile_pread;
+  fs->pwrite = kmemfile_pwrite;
+  fs->close = kmemfile_close;
+  fs->accessmode = kmemfile_accessmode;
+  fs->fstat = kmemfile_fstat;
   
   FSFile *file = kmalloc(sizeof(FSFile));
  
@@ -120,7 +121,7 @@ int kmemfile_create(int size) {
   file->access = O_RDWR|O_SEARCH;
   
   file->device = NULL;
-  file->fs = &kmemfile_iface;
+  file->fs = fs;
   file->inode = 0;
   file->custom = size;
   

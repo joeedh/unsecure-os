@@ -8,19 +8,33 @@
 #include "../libc/libk.h"
 
 //#define LOCK_DEBUG
-extern volatile unsigned int enable_klock_debug;
-#define enable_klock_debug 0
+#ifdef LOCK_DEBUG
+  extern volatile unsigned int enable_klock_debug;
+  //#define enable_klock_debug 0
+#endif
 
-typedef struct Lock {
+typedef volatile struct Lock {
   volatile int state;
   volatile unsigned int owner;
+#ifdef LOCK_DEBUG
   const char *file;
   int line;
+#endif
 } Lock;
 
-#define klock_init(lock) _klock_init(lock, __FILE__, __LINE__)
-#define klock_lock(lock) _klock_lock(lock, __FILE__, __LINE__)
-#define klock_unlock(lock) _klock_unlock(lock, __FILE__, __LINE__)
+#ifdef LOCK_DEBUG
+  #define DEBUG_ARGS , const char *file, int line) {
+  #define klock_init(lock) _klock_init(lock, __FILE__, __LINE__)
+  #define klock_lock(lock) _klock_lock(lock, __FILE__, __LINE__)
+  #define klock_unlock(lock) _klock_unlock(lock, __FILE__, __LINE__)
+#else
+  #define DEBUG_ARGS
+  #define klock_init _klock_init
+  #define klock_lock _klock_lock
+  #define klock_unlock _klock_unlock
+#endif
+
+#define DEBUG_ARGS 
 
 #define SPINLOCK 0
 #define IRQLOCK  1
@@ -34,17 +48,21 @@ static const char *_get_filename(const char *file) {
 }
 
 #if LOCKMETHOD == NOTHING
-static inline void _klock_init(Lock *lock, const char *file, int line) {
+static inline void _klock_init(Lock *lock DEBUG_ARGS) {
 }
-static inline void _klock_lock(Lock *lock, const char *file, int line) {
+static inline void _klock_lock(Lock *lock DEBUG_ARGS) {
 }
-static inline void _klock_unlock(Lock *lock, const char *file, int line) {
+static inline void _klock_unlock(Lock *lock DEBUG_ARGS) {
 }
+
 #elif LOCKMETHOD == IRQLOCK
-static inline void _klock_init(Lock *lock, const char *file, int line) {
+static inline void _klock_init(Lock *lock DEBUG_ARGS) {
   lock->state = lock->owner = 0;
   
 #ifdef LOCK_DEBUG
+  lock->file = file;
+  lock->line = line;
+  
   if (enable_klock_debug && !inside_irq) {
     kprintf("klock(init): %s:%d\n", _get_filename(file), line);
   }
@@ -52,9 +70,11 @@ static inline void _klock_init(Lock *lock, const char *file, int line) {
 }
 
 //interrupt version
-static inline void _klock_lock(Lock *lock, const char *file, int line) {
-  lock->file = file;
-  lock->line = line;
+static inline void _klock_lock(Lock *lock DEBUG_ARGS) {
+  #ifdef LOCK_DEBUG
+    lock->file = file;
+    lock->line = line;
+  #endif
   
   if (lock->state == 0) {
     lock->owner = safe_entry();
@@ -73,7 +93,7 @@ static inline void _klock_lock(Lock *lock, const char *file, int line) {
   lock->state++;
 }
 
-static inline void _klock_unlock(Lock *lock, const char *file, int line) {
+static inline void _klock_unlock(Lock *lock DEBUG_ARGS) {
   if (--lock->state <= 0) {
     if (lock->state == 0) {
       safe_exit(lock->owner);
@@ -94,30 +114,32 @@ static inline void _klock_unlock(Lock *lock, const char *file, int line) {
 }
 
 #elif LOCKMETHOD == SPINLOCK
-static inline void _klock_init(Lock *lock, const char *file, int line) {
+static inline void _klock_init(Lock *lock DEBUG_ARGS) {
   lock->state = lock->owner = 0;
   
   #ifdef LOCK_DEBUG
   if (enable_klock_debug && !inside_irq) {
+    lock->file = file;
+    lock->line = line;
     kprintf("klock(init): %s:%d\n", _get_filename(file), line);
   }
   #endif
 }
 
 
-//interrupt version
-static inline void _klock_lock(Lock *lock, const char *file, int line) {
+//spinlock version
+static inline void _klock_lock(Lock *lock DEBUG_ARGS) {
   volatile unsigned int tid = k_curtaskp->tid;
   
   if (lock->owner == tid) {
     lock->state++;
     return;
   }
-  
+
 restart:
   do {
     k_curtaskp->sleep = 1;
-    asm("PAUSE");
+    //asm("PAUSE");
   } while (lock->owner != 0);
   
   volatile unsigned int state = safe_entry();
@@ -137,7 +159,7 @@ restart:
   #endif
 }
 
-static inline void _klock_unlock(Lock *lock, const char *file, int line) {
+static inline void _klock_unlock(Lock *lock DEBUG_ARGS) {
   volatile unsigned int tid = k_curtaskp->tid;
   
   if (lock->owner != tid) {

@@ -194,7 +194,7 @@ ISR_HANDLE(2);
 ISR_HANDLE(3);
 ISR_HANDLE(4);
 ISR_HANDLE(5);
-ISR_HANDLE(6);
+ISR_HANDLE(6); //floppy
 ISR_HANDLE(7);
 ISR_HANDLE(8);
 ISR_HANDLE(9);
@@ -202,8 +202,8 @@ ISR_HANDLE(10);
 ISR_HANDLE(11);
 ISR_HANDLE(12);
 ISR_HANDLE(13);
-ISR_HANDLE(14);
-ISR_HANDLE(15);
+ISR_HANDLE(14); //primary ata hard disk
+ISR_HANDLE(15); //secondary ata hard disk
 
 int nop_interrupt_handler(unsigned int irq) {
   return 0;

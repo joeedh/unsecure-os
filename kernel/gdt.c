@@ -126,6 +126,11 @@ extern void isr_4();
 extern void isr_end();
 extern void tss_stack_top();
 
+void gdt_tss_callback() {
+  kerror(0, "TSS callback executed");
+  asm("hlt");
+}
+
 void gdt_initialize() {
   GDT gdt;
   int i=0;
@@ -133,7 +138,13 @@ void gdt_initialize() {
   memset((void*) &myTss, 0, sizeof(myTss));
   memset(__k_gdt, 0, sizeof(__k_gdt));
   
-  myTss.esp0 = (unsigned long) tss_stack_top;
+  unsigned int *stack = (unsigned int*)tss_stack_top;
+  
+  //far call
+  *stack-- = 0x08;
+  *stack-- = (unsigned int)gdt_tss_callback;
+  
+  myTss.esp0 = (unsigned long) stack;
   
   //unsigned long isr_len = (unsigned long)isr_end - (unsigned long)isr_1;
   

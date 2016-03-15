@@ -143,6 +143,9 @@ int kcli_main(int argc, char **argv) {
   //*nullptr = 0x0; 
   //kprintf(":%d\n", *nullptr);
   
+  kprintf("Started kcli_main\n");
+  terminal_flush();
+  
   unsigned char commandbuf[2048];
   int commandlen = 0;
   
@@ -216,6 +219,17 @@ int kcli_main(int argc, char **argv) {
           commandbuf[commandlen] = 0;
           
           if (commandlen > 0 && !strcmp(commandbuf, "ls")) {
+            extern void test_rootfs();
+            extern void setup_root();
+            
+            //asm("CLI");
+            //setup_root();
+            kprintf("\n\n\n");
+            test_rootfs();
+            kprintf("\n\n\n");
+            //asm("STI");
+            
+            /*
             char **argv = kmalloc(sizeof(char*)*MAX_OUT);
             strcpy(commandbuf+3, curworkingdir);
             commandbuf[2] = ' ';
@@ -225,6 +239,7 @@ int kcli_main(int argc, char **argv) {
             fprintf(stdout, "\n");
             kcli_exec(commandbuf, argc, argv, ls_test_command, 1);
             fprintf(stdout, "%s> ", curworkingdir);
+            //*/
           } else if (commandlen > 0 && !strcmp(commandbuf, "fs")) {
             char **argv = kmalloc(sizeof(char*)*MAX_OUT);
             int argc = shlex_parse(commandbuf, argv);

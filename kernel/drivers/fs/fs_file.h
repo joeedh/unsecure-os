@@ -31,6 +31,8 @@ typedef struct FSFile {
 #define _FILE_MAGIC 235433413
 
 void _fs_file_init(FSFile *file);
+void _fs_fsinterface_init(FSInterface *fs);
+int bad_fsdev(FSInterface *fs, BlockDeviceIF *device);
 
 extern void filesystem_initialize();
 

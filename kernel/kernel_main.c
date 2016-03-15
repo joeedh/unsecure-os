@@ -20,6 +20,9 @@
 #include "task/task.h"
 #include "task/process.h"
 
+extern void pci_initialize();
+extern void parse_bootinfo(void *bootinfo1);
+
 volatile unsigned int enable_klock_debug;
 
 #if defined(__cplusplus)
@@ -45,8 +48,8 @@ void setup_root() {
    //for now, just truncate
   size = size - (size % bsize);
   
-  BlockDeviceIF *device = kmemblock_new(bsize, _tinyext2_fs_size/bsize);
-  device->write(device, 0, size, _tinyext2_fs);
+  BlockDeviceIF *device = kmemblock_new(bsize, _tinyext2_fs_size/bsize, _tinyext2_fs);
+  //device->write(device, 0, size, _tinyext2_fs);
   
   FSInterface *fs = kext2fs_create(device);
   rootfs = fs;
@@ -100,7 +103,7 @@ void test_rootfs() {
   closedir(dir);
 }
 
-void startup_kernel() {
+void startup_kernel(void *bootinfo1) {
   _cpu_exception_flag = 0;
   rootfs = NULL;
   
@@ -108,37 +111,41 @@ void startup_kernel() {
   
   enable_klock_debug = 0;
   
-  timer_initialize();
   gdt_initialize();
+  libk_initialize();
 
-	/* Initialize terminal interface */
-	terminal_initialize();
+  /* Initialize terminal interface */
+  timer_initialize();
+  tasks_initialize();
+  process_initialize();
+
+  terminal_initialize();
   
   kprintf("\ninitializing interrupts. . .\n");
   
   interrupts_initialize();
   keyboard_post_irq_enable();
 
-  kmalloc_init();
-  libk_initialize();
-
-  tasks_initialize();
-  process_initialize();
+  parse_bootinfo(bootinfo1);
+  kmalloc_init_with_holes();
+  
+  kprintf("initializing pci. . .\n");
+  pci_initialize();
   
   /* keyboard */
   keyboard_initialize();
 
-  //test_kmalloc();
+  test_kmalloc();
 
   filesystem_initialize();
   tty_file_initialize();
   
-  //test_rootfs
-  kprintf("\nmounting file system. . .\n");
+  //kprintf("\nmounting file system. . .\n");
   setup_root();
   
+  asm("STI");
   //kprintf("\ntesting file system code. . .\n");
-  //test_rootfs();
+  test_rootfs();
   
   kprintf("Kernel started\n Exception flag: %d\n", _cpu_exception_flag);
 }
@@ -167,8 +174,15 @@ void test_task_finish_finish(int ret, int tid, int pid) {
   kprintf("-> %x %x %x\n", ret, tid, pid);
 }
 
-void kernel_main() {
-  startup_kernel();
+extern void *_bootinfo;
+
+void kernel_main(void *bootinfo1) {
+  _bootinfo = bootinfo1;
+  
+  startup_kernel(bootinfo1);
+  
+  //while (1) {
+  //}
   
   /*
   asm("CLI");
@@ -177,6 +191,7 @@ void kernel_main() {
   return;
   //*/
   kprintf("sizeof(Task): %d\n", sizeof(Task));
+  kprintf("sizeof(Process): %d\n", sizeof(Process));
   //test_kmalloc();
   
   //while (1) {
@@ -184,8 +199,11 @@ void kernel_main() {
   
   //test_kmalloc();
   
-  //char *argv[] = {"yay", "one", "two", "three"};
+  char *argv[] = {"yay", "one", "two", "three"};
+  Process *proc = spawn_process("sh", 4, argv, kcli_main);
+  process_start(proc);
   
+  /*
   kprintf("Started Task! %x\n", k_curtaskp);
   terminal_flush();
   
@@ -193,6 +211,7 @@ void kernel_main() {
   
   kprintf("              %x\n", k_curtaskp);
   terminal_flush();
+  //*/
   
   //paranoia check to ensure interrupts are now enabled
   asm("STI");
@@ -203,7 +222,8 @@ void kernel_main() {
   //kprintf("k_totaltasks: %d\n", k_totaltasks);
   while (1) {
     //asm("PAUSE");
-    asm("STI");
+    //asm("STI");
+    continue;
     
     if (last_tick != kernel_tick) {
       counter++;
