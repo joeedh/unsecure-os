@@ -124,7 +124,6 @@ uint16_t PIC_get_isr(void)
 }
 
 volatile int last_irq = 0;
-extern volatile unsigned int _cpu_exception_flag;
 
 #define EXC_HANDLE(n) \
 extern void exr_##n();\
@@ -209,7 +208,6 @@ int nop_interrupt_handler(unsigned int irq) {
   return 0;
 }
 
-extern struct IDTEntry idt_table[256];
 extern void _setIRT();
 
 extern void *idtptrs[];

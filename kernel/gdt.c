@@ -118,7 +118,6 @@ void gdt_decode(uint8_t *target, struct GDT *source)
 TSS myTss;
 
 extern void _setGDT_prot2();
-extern struct IDTEntry idt_table[256];
 extern void isr_1();
 extern void isr_2();
 extern void isr_3();

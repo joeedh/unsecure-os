@@ -1,6 +1,7 @@
 #ifndef _K_IO_H
 #define _K_IO_H
 
+//#define PADDINGOK #pragma GCC diagnostic ignored "-Wpadded"
 #define MAX_TASKS 32 //keep up-to-date with nasm code
 
 #define MEM_STACK_BASE (1024*1024*12)

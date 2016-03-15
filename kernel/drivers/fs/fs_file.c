@@ -172,6 +172,9 @@ int pipe(int fds[2]) {
 extern FSInterface *rootfs;
 extern BlockDeviceIF *rootdevice;
 
+//static struct {struct dirent item, DIR dir} dirs[32];
+//unsigned int curdir = 0;
+
 DIR *opendir(const unsigned char *path) {
   BlockDeviceIF *device = rootdevice;
   FSInterface *fs = rootfs;
@@ -214,14 +217,17 @@ DIR *opendir_inode(int inode) {
   klock_lock(&fs->lock);
   klock_lock(&device->lock);
   
-  DIR dir[25], *dir2 = NULL;
+  DIR *dir2 = NULL;
   
-  memset(&dir, 0, sizeof(dir));
-  int ret = fs->opendir_inode(fs, device, &dir[0], inode);
+  uintptr_t addr = (uintptr_t) kmalloc(sizeof(DIR) + sizeof(dirent));
+  addr += sizeof(dirent);
+  dir2 = (DIR*)addr;
+
+  memset(dir2, 0, sizeof(dir2));
+  
+  int ret = fs->opendir_inode(fs, device, dir2, inode);
   
   if (ret == 0) {
-    dir2 = (DIR*)(((unsigned char*)kmalloc(sizeof(DIR) + sizeof(dirent))) + sizeof(dirent));
-    *dir2 = dir[0];
   }
   
   klock_unlock(&device->lock);
@@ -263,10 +269,7 @@ struct dirent *readdir(DIR *dir) {
   
   struct dirent *entry = (struct dirent*) dir;
   entry--;
-  
-  extern FSInterface *rootfs;
-  extern BlockDeviceIF *rootdevice;
-
+ 
   BlockDeviceIF *device = rootdevice;
   FSInterface *fs = rootfs;
   

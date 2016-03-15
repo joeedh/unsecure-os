@@ -29,7 +29,6 @@ volatile unsigned int enable_klock_debug;
 extern "C" /* Use C linkage for kernel_main. */
 #endif
 
-extern volatile unsigned int kernel_tick;
 extern volatile unsigned int k_debug;
 volatile unsigned int k_debug2;
 extern Task tasks[];
@@ -90,6 +89,7 @@ void test_rootfs() {
   closedir(dir);
   kprintf("\n");
   
+  //*
   dir = opendir("/usr/include");
   while ((entry = readdir(dir))) {
     kprintf("  %d:%s\n", entry->d_ino, entry->d_name);
@@ -101,6 +101,7 @@ void test_rootfs() {
   }
   
   closedir(dir);
+  //*/
 }
 
 void startup_kernel(void *bootinfo1) {

@@ -19,7 +19,7 @@ typedef struct Process {
   volatile int pid;
   char name[32];
   char calling_path[32];
-  char working_path[255];
+  char working_path[256];
   
   volatile void *entryfunc;
   void (*finishfunc)(int retval, int tid, int pid);

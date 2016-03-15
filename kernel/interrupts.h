@@ -19,6 +19,10 @@ void interrupts_initialize();
 
 extern volatile unsigned int inside_irq;
 
+//well. . .this is a diagnostic structure anyway,
+//so I don't feel like figuring out what I did wrong to
+//make it not be aligned
+#pragma GCC diagnostic ignored "-Wpadded"
 typedef struct EFLAGS {
   unsigned int carry:1;
   unsigned int always_set1:1;

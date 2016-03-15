@@ -87,6 +87,7 @@ typedef struct IoBAR {
   bit byte4_base_addr:30; //4-byte aligned base address
 } IoBAR;
 
+#pragma GCC diagnostic ignored "-Wpadded"
 typedef struct PCICommandRegister {
   bit space_io:1;
   bit space_memory:1;
@@ -102,6 +103,7 @@ typedef struct PCICommandRegister {
   bit reserved2:5;
 } PCICommandRegister;
 
+#pragma GCC diagnostic ignored "-Wpadded"
 typedef struct PCIStatusRegister {
   bit reserved:3;
   bit interruprt:1;
@@ -121,6 +123,7 @@ typedef struct PCIStatusRegister {
   bit detected_parity_error:1;
 } PCIStatusRegister;
 
+#pragma GCC diagnostic ignored "-Wpadded"
 typedef struct BIST {
   bit code_complete:4;
   bit reserved:2;

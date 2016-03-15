@@ -495,9 +495,9 @@ static int ext2_opendir_inode(void *vself, BlockDeviceIF *device, DIR *vdir, int
 
   if (self->superblock.inodes_per_group == 0 || blocksize == 0) {
     self->error = 1;
+    kprintf("ext2 filesystem corruption!\n");
     return -1; //eek!
   }
-  
   
   size_t block, ilocal;
   size_t fileoff = find_inode(device, dir->dir_inode, self, &block, &ilocal);
@@ -505,11 +505,13 @@ static int ext2_opendir_inode(void *vself, BlockDeviceIF *device, DIR *vdir, int
   device->read(device, fileoff, sizeof(INode), &dir->inode);
   
   if (!(dir->inode.type & TYPE_DIRECTORY)) {
+    kprintf("not a directory!\n");
     return -1; //eek!
   }
   
   dir->i = 0;
   dir->size = dir->inode.size_lower32;
+  kprintf("dir: %x, dir->size: %d\n", dir, dir->inode.size_lower32);
   
   return 0;
 }
@@ -524,7 +526,7 @@ static int ext2_readdir(void *vself, BlockDeviceIF *device, struct dirent *outen
   
   if (i >= dir->size) {
     dir->finished = 1;
-    kprintf("dir->finished was set: %d\n", dir->finished);
+    kprintf("dir: %x, dir->finished was set: %d, size: %d\n", dir, dir->finished, dir->size);
     return 1;
   }
   

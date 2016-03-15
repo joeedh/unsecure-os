@@ -5,7 +5,7 @@
 #include <stdint.h>
 
 typedef struct dirent {
-  int d_ino;
+  int d_ino, pad;
   char d_name[256];
 } dirent;
 

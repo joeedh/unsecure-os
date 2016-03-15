@@ -16,6 +16,7 @@ lines = [l.strip() for l in buf.split("\n")]
 out = """#include <stddef.h>
 #include <stdint.h>
 
+#pragma GCC diagnostic ignored "-Wpadded"
 struct {
   uint32_t addr; 
   char name[45];
