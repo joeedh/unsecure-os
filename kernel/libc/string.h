@@ -11,6 +11,16 @@
 
 size_t strlen(const unsigned char* str);
 
+//for sake of security, will never return greater than buflen-1
+static inline size_t strnlen(const unsigned char* str, size_t buflen) {
+  for (unsigned int i=0; i<buflen; i++) {
+    if (!str[i])
+      return i;
+  }
+  
+  return buflen-1;
+}
+
 static inline int strcmp(const unsigned char *a, const unsigned char *b) {
   unsigned char *c = (unsigned char*)a;
   unsigned char *d = (unsigned char*)b;
@@ -43,6 +53,9 @@ static inline int memset(volatile void *s1, unsigned char v, size_t n) {
 }
 
 static inline int smemset(unsigned short *c1, unsigned short v, size_t n) {
+  if (!n)
+    return 0;
+
   size_t i = n;
   
   while (i > 0) {
@@ -56,6 +69,9 @@ static inline int smemset(unsigned short *c1, unsigned short v, size_t n) {
 }
 
 static inline int smemcpy(unsigned short *c1, unsigned short *c2, size_t n) {
+  if (!n)
+    return 0;
+  
   size_t i = n;
   
   while (i > 0) {
@@ -97,6 +113,9 @@ static inline int strncpy(const unsigned char *a, const unsigned char *b, size_t
 }
 
 static inline int memcpy(void *s1, void *s2, size_t n) {
+  if (!n)
+    return 0;
+  
   size_t i = n;
   unsigned char *c1 = (unsigned char*) s1;
   unsigned char *c2 = (unsigned char*) s2;

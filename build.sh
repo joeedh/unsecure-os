@@ -1,14 +1,16 @@
 #!/usr/bin/env bash
 
-nasm kernel/multiboot.nasm -felf32 -o multiboot.o
+nasm kernel/core_x86.nasm -felf32 -o core_x86.o
 #-fno-asynchronous-unwind-tables
 #symbol_table_gen.o
 
-i686-elf-gcc -Wpadded -Wredundant-decls -fno-strict-aliasing -fno-asynchronous-unwind-tables -D__KERNEL_BUILD__  -c -funsigned-char _tinyext2_fs.c kernel/drivers/pci/*.c kernel/drivers/blockdevice/*.c \
-      kernel/drivers/ext2/*.c kernel/*.c kernel/drivers/fs/*.c kernel/libc/*.c kernel/task/*.c kernel/drivers/tty/*.c kernel/drivers/keyboard/*.c \
-      -ffreestanding -O2 -Wall -Wextra -std=gnu99 -funsigned-char  -Wno-pointer-sign -Wno-unused-function -Wno-unused-parameter
+source ./cflags.sh
+i686-elf-gcc $CFLAGS _tinyext2_fs.c kernel/drivers/pci/*.c kernel/drivers/blockdevice/*.c \
+              kernel/drivers/ext2/*.c kernel/*.c kernel/drivers/fs/*.c kernel/libc/*.c kernel/task/*.c \
+              kernel/drivers/tty/*.c kernel/drivers/keyboard/*.c -std=gnu99
+             
 
-i686-elf-gcc -fno-asynchronous-unwind-tables -funsigned-char -T linker.ld -o kernel.bin multiboot.o timer.o gdt.o kernel_main.o bootinfo.o \
+i686-elf-gcc -g -DINIT_SECTION_ASM_OP=.init -fno-omit-frame-pointer -funsigned-char -T linker.ld -o kernel.bin core_x86.o timer.o gdt.o kernel_main.o bootinfo.o \
                                              interrupt_pointers.o interrupts.o libk.o list.o task.o process.o\
                                              kmalloc.o printf.o tty.o keyboard.o memblock.o memory_file.o mempipe.o \
                                              ext2.o blockdevice.o \
@@ -23,5 +25,5 @@ i686-elf-gcc -fno-asynchronous-unwind-tables -funsigned-char -T linker.ld -o ker
 python gen_symtable.py
 
 
-#i686-elf-gcc -fno-asynchronous-unwind-tables -funsigned-char -T linker.ld -o kernel.bin multiboot.o -ffreestanding -O2 -nostdlib  -lgcc -funsigned-char 
+#i686-elf-gcc -fno-asynchronous-unwind-tables -funsigned-char -T linker.ld -o kernel.bin core_x86.o -ffreestanding -O2 -nostdlib  -lgcc -funsigned-char 
 

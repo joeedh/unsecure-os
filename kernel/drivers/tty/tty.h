@@ -25,6 +25,7 @@ enum vga_color {
 	COLOR_LIGHT_MAGENTA = 13,
 	COLOR_LIGHT_BROWN = 14,
 	COLOR_WHITE = 15,
+  COLOR_DEFAULT=COLOR_LIGHT_GREY
 };
 
 void terminal_initialize();

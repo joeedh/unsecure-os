@@ -6,7 +6,17 @@
 #include <stdarg.h>
 
 #include "libk.h"
- 
+          
+#ifndef COLOR_HANDLER
+#define COLOR_HANDLER\
+  case '^':\
+    i++;\
+    terminal_setcolor(va_arg(vl, unsigned int));\
+    break;
+#else
+#define COLOR_HANDLER
+#endif
+
 /* Check if the compiler thinks we are targeting the wrong operating system. */
 #if defined(__linux__)
 #error "You are not using a cross-compiler, you will most certainly run into trouble"
@@ -132,6 +142,7 @@ PRINTF {
           written++;
           PUTCHAR('%');
           break;
+        COLOR_HANDLER
         case 'c':
           PUTCHAR(c);
           i++;

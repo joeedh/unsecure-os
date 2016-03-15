@@ -95,10 +95,10 @@ targets = OrderedDict([
   "crt01.custom", [
     CC + " " + CFLAGS +  " -D__KERNEL_BUILD__ -c kernel/libc/crt0.c -o build/crt0.o", 
   ],
-  "multiboot.o"  ,  ["kernel/multiboot.nasm"],
+  "core_x86.o"  ,  ["kernel/core_x86.nasm"],
   "main_sources" ,   kbuild_sources,
   "kernel.bin.custom", [
-    CC + " " + LINK_FLAGS + " -T linker.ld -o build/kernel.bin build/multiboot.o " + linktargets(kbuild_sources)
+    CC + " " + LINK_FLAGS + " -T linker.ld -o build/kernel.bin build/core_x86.o " + linktargets(kbuild_sources)
   ],
   "crt0.custom", [
     CC + " " + CFLAGS +  " -c kernel/libc/crt0.c -o build/crt0.o", 

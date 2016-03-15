@@ -1,5 +1,7 @@
 #include "task.h"
 
+#include "../definitions/memory.h"
+
 #include "../io.h"
 #include "../interrupts.h"
 #include "../libc/libk.h"

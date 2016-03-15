@@ -3,6 +3,8 @@
 #include "libc/libk.h"
 #include "drivers/tty/tty.h"
 #include "drivers/keyboard/keyboard.h"
+#include "definitions/memory.h"
+#include "task/task.h"
 
 #include "io.h"
 #include "interrupts.h"
@@ -123,6 +125,23 @@ uint16_t PIC_get_isr(void)
     return __pic_get_irq_reg(PIC_READ_ISR);
 }
 
+extern void stacktrace();
+
+static inline int kprintinfo() {
+  stacktrace();
+  
+  kprintf("\n============================\n");
+  terminal_flush();
+  
+  kprintf("eax: %x, ecx: %x, esp: %x\n", read_eax(), read_ecx(), read_esp());
+  kprintf("ebp: %x, ebx: %x, eflags: %x\n", read_ebp(), read_ebx(), read_eflags());
+  kprintf("\ninstruction pointer: %x\n", get_eip);
+  kprintf("k_curtaskp: %x\n", k_curtaskp);
+  terminal_flush();
+  
+  return 0;
+}
+
 volatile int last_irq = 0;
 
 #define EXC_HANDLE(n) \
@@ -136,6 +155,7 @@ void _exc_handler##n(unsigned int flag) {\
 extern void exr_##n();\
 void _exc_handler##n(unsigned int flag) {\
   _cpu_exception_flag |= flag;\
+  kprintinfo();\
   kerror(n, "Got exception " #n);\
 }
 
@@ -143,25 +163,26 @@ void _exc_handler##n(unsigned int flag) {\
 extern void exr_##n();\
 void _exc_handler##n(unsigned int flag) {\
   _cpu_exception_flag |= flag;\
+  kprintinfo();\
   kprintf("====Got exception " #n "=====\n");\
 }
 
-DEATH_EXCEPTION(0); //divide by zero
+DEATH_EXCEPTION(0); //divide by zero #DE
 
-EXC_HANDLE(1); //debug
-EXC_HANDLE(2); //non-maskable interrupt
-EXC_HANDLE(3); //breakpoint
-EXC_HANDLE(4); //overflow
-EXC_HANDLE(5); //bound-range error
-DEATH_EXCEPTION(6); //invalid opcode
-DEATH_EXCEPTION(7); //device not available
-EXC_HANDLE(8); //double fault
-EXC_HANDLE(9); //coprocessor segment overrun
-EXC_HANDLE(10); //invalid tss
-EXC_HANDLE(11); //segment not present
-EXC_HANDLE(12); //stack error
-DEATH_EXCEPTION(13); //general protection error (e.g. memory)
-EXC_HANDLE(14); //page fault
+EXC_HANDLE(1); //debug                       #DB
+EXC_HANDLE(2); //non-maskable interrupt      #NMI
+EXC_HANDLE(3); //breakpoint                  #BP
+EXC_HANDLE(4); //overflow                    #OF
+EXC_HANDLE(5); //bound-range error           #BR
+DEATH_EXCEPTION(6); //invalid opcode         #UD
+DEATH_EXCEPTION(7); //device not available   #NM
+WARN_EXCEPTION(8); //double fault            #DF
+EXC_HANDLE(9); //coprocessor segment overrun 
+WARN_EXCEPTION(10); //invalid tss            #TS
+WARN_EXCEPTION(11); //segment not present    #NP
+WARN_EXCEPTION(12); //stack error            #SS
+DEATH_EXCEPTION(13); //general protection    #GP
+WARN_EXCEPTION(14); //page fault             #PF
 
 //there are only seven of these, so just define table here
 void *excptrs[] = {

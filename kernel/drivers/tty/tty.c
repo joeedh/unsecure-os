@@ -18,8 +18,11 @@
 #include "../../io.h"
 #include "tty.h"
 #include "../../task/lock.h"
+#include "../../task/critical_section.h"
 
-static Lock tty_lock = {0,};
+
+//static Lock tty_lock = {0,};
+static CriticalSection tty_lock = {0,};
 
 #define XY2IDX(x, y) ((((y) + terminal_row_off) % VGA_HEIGHT)*VGA_WIDTH + (x));
  
@@ -81,11 +84,11 @@ void terminal_buffer_flip() {
 }
 
 void terminal_flush() {
-  klock_lock(&tty_lock);
+  ksection_lock(&tty_lock);
   
   terminal_buffer_flip();
   
-  klock_unlock(&tty_lock);
+  ksection_unlock(&tty_lock);
 }
 
 static unsigned char hexline[] = "0123456789ABCDEF";
@@ -125,7 +128,7 @@ void terminal_set_debug(unsigned int channel, unsigned int chr, unsigned int clr
 void terminal_initialize() {
 	terminal_row = terminal_row_off = 0;
 	terminal_column = 0;
-	terminal_color = make_color(COLOR_LIGHT_GREY, COLOR_BLACK);
+	terminal_color = make_color(COLOR_DEFAULT, COLOR_BLACK);
 	terminal_buffer_out = (uint16_t*) 0xB8000;
   
 	for (size_t y = 0; y < VGA_HEIGHT; y++) {
@@ -136,17 +139,17 @@ void terminal_initialize() {
 		}
 	}
   
-  klock_init(&tty_lock);
+  ksection_init(&tty_lock);
 }
 
 void terminal_clear() {
-  klock_lock(&tty_lock);
+  ksection_lock(&tty_lock);
   
   memset(terminal_buffer, 0, VGA_WIDTH*VGA_HEIGHT*2);
   terminal_row = terminal_column = 0;
   terminal_buffer_flip();
   
-  klock_unlock(&tty_lock);
+  ksection_unlock(&tty_lock);
 }
  
 void terminal_setcolor(uint8_t color) {
@@ -159,7 +162,7 @@ void terminal_putentryat(unsigned char c, uint8_t color, size_t x, size_t y) {
 }
 
 void terminal_rowpush() {
-  //klock_lock(&tty_lock);
+  //ksection_lock(&tty_lock);
   
   //smemcpy(terminal_buffer, terminal_buffer+VGA_WIDTH, VGA_WIDTH*(VGA_HEIGHT-1));
   
@@ -170,12 +173,12 @@ void terminal_rowpush() {
   
   //terminal_buffer_flip();
 
-  //klock_unlock(&tty_lock);
+  //ksection_unlock(&tty_lock);
 }
 
 void terminal_putchar(unsigned char c) {
+  ksection_lock(&tty_lock);
   //volatile unsigned int state = safe_entry();
-  klock_lock(&tty_lock);
   
   tty_cache_len++;
   
@@ -183,8 +186,8 @@ void terminal_putchar(unsigned char c) {
     terminal_putchar(' ');
     terminal_putchar(' ');
     
+    ksection_unlock(&tty_lock);
     //safe_exit(state);
-    klock_unlock(&tty_lock);
     return;
   }
   
@@ -231,7 +234,7 @@ void terminal_putchar(unsigned char c) {
     }
   }
   
-  klock_unlock(&tty_lock);
+  ksection_unlock(&tty_lock);
   //safe_exit(state);
 }
  

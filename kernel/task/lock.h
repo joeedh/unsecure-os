@@ -1,4 +1,13 @@
 #ifndef _LOCK_H
+
+#include "critical_section.h"
+#define Lock CriticalSection
+
+#define klock_init ksection_init
+#define klock_lock ksection_lock
+#define klock_unlock ksection_unlock
+
+#if 0
 #define _LOCK_H
 
 #include "../libc/string.h"
@@ -33,8 +42,6 @@ typedef volatile struct Lock {
   #define klock_lock _klock_lock
   #define klock_unlock _klock_unlock
 #endif
-
-#define DEBUG_ARGS 
 
 #define SPINLOCK 0
 #define IRQLOCK  1
@@ -180,6 +187,8 @@ static inline void _klock_unlock(Lock *lock DEBUG_ARGS) {
 
 #ifdef enable_klock_debug
 #undef enable_klock_debug
+#endif
+
 #endif
 
 #endif /* _LOCK_H */

@@ -10,6 +10,7 @@
 #include "io.h"
 #include "interrupts.h"
 #include "gdt.h"
+#include "definitions/memory.h"
 
 #include "drivers/fs/dirent.h"
 
@@ -89,7 +90,7 @@ void test_rootfs() {
   closedir(dir);
   kprintf("\n");
   
-  //*
+  /*
   dir = opendir("/usr/include");
   while ((entry = readdir(dir))) {
     kprintf("  %d:%s\n", entry->d_ino, entry->d_name);

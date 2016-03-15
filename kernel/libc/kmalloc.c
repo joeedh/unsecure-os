@@ -5,36 +5,38 @@
 #include "list.h"
 #include "../task/task.h"
 #include "../task/lock.h"
+#include "../task/critical_section.h"
 #include "../drivers/tty/tty.h"
-
-#define MEM_BITMAP_START ((uintptr_t)MEM_STACK_END+1024*32)
-#define MEM_BITMAP_END   ((uintptr_t)MEM_STACK_END+1024*1024*4)
-#define MEM_BITMAP_SIZE (MEM_BITMAP_END - MEM_BITMAP_START)
-
-#define MEM_BITMAP_SET(blockid)
-#define MEM_BITMAP_UNSET(blockid)
-#define MEM_BITMAP_TEST(blockid)
-
-#define ADDR_TO_BLOCKIDX(addr)
-#define BLOCKIDX_TO_ADDR(addr)
-
-#define MEM_BASE (MEM_BITMAP_END+1024*32)
-#define MEM_END (MEM_BITMAP_END+1024*1024*400)
-#define MEM_SIZE (MEM_END-MEM_BASE)
+#include "../definitions/memory.h"
 
 #define MAGIC_HEAD_CHECKSUM 45436334
 #define MAGIC_TAIL_CHECKSUM 25463450
 
 #define MEM_FREED (-5)
 
-Lock kmalloc_lock;
+//Lock kmalloc_lock
+CriticalSection kmalloc_lock;
+
+#ifndef klock_init
+#define klock_init ksection_init
+#endif
+
+#ifndef klock_lock
+#define klock_lock ksection_lock
+#endif
+
+#ifndef klock_unlock
+#define klock_unlock ksection_unlock
+#endif
 
 typedef struct MemNode {
   struct MemNode *next, *prev;
   
   size_t size, checksum;
+  
   char *file;
   int line;
+  
   int pid; //MEM_FREED is put here
   struct MemNode *pair;
 } MemNode;
@@ -70,7 +72,7 @@ void kmalloc_init_with_holes() {
   //the motherblock!
   //we're assuming it's not within a memory mapped hole. . .
   
-  unsigned char *base = (unsigned char*)MEM_BASE;
+  uintptr_t base = MEM_BASE;
   MemHole *hole = holes;
   
   int i = 0;
@@ -85,11 +87,22 @@ void kmalloc_init_with_holes() {
   holes[tothole].length = 0;
   
   for (; i<tothole; i++, hole++) {
+    base = ALIGN8(base);
+    
     MemNode *head = (MemNode*)base;
-    size_t len = hole[i].base - ((unsigned int)base) - 256; //add some protection from buffer overruns
+    size_t len;
+    
+    if (hole[i].base < (unsigned int)base) {
+      base = hole[i].base + hole[i].length + 32; //add some protection from buffer overruns
+      continue;
+    } else {
+      base = hole[i].base - 32; //add some protection from buffer overruns
+    }
+    
+    len = (base - (uintptr_t)head);
     
     if (len < sizeof(MemNode)*2+4) {
-      base = (unsigned char*)(hole[i].base + hole[i].length);
+      base = hole[i].base + hole[i].length + 32; //add some protection from buffer overruns
       continue;
     }
     
@@ -99,8 +112,14 @@ void kmalloc_init_with_holes() {
     
     head->size = len - sizeof(MemNode)*2;
     
-    MemNode *tail = (MemNode*)( ((unsigned char*)head) + sizeof(MemNode) + len );
+    MemNode *tail = (MemNode*)(((uintptr_t)(head+1)) + head->size);
     *tail = *head;
+    
+    if ((uintptr_t)tail > base) {
+      kerror(-1, "kmalloc error!\n");
+      while (1) {
+      }
+    }
     
     head->pair = tail;
     tail->pair = head;
@@ -164,52 +183,46 @@ void *_kmalloc(size_t size, char *file, int line) {
   klist_remove(&freelist, mem);
   klist_prepend(&alloclist, mem);
   
-  //do we not need to split?
+  mem->file = file;
+  mem->line = line;
+  mem->pid = k_curtaskp->tid;
+
+    //do we not need to split?
   if (mem->size == size2) {
-    mem->file = file;
-    mem->line = line;
     mem->checksum = MAGIC_HEAD_CHECKSUM;
     mem->pair->checksum = MAGIC_TAIL_CHECKSUM;
-    
-    mem->pid = k_curtaskp->tid;
     
     klock_unlock(&kmalloc_lock);
     return ++mem;
   }
   
+  size_t size3 = size2 - sizeof(MemNode)*2;
+  
+  uintptr_t base = (uintptr_t) mem;
+  
+  MemNode *head1 = mem;
+  MemNode *tail1 = (MemNode*) (base + sizeof(MemNode) + size3);
+  MemNode *head2 = (MemNode*) (base + sizeof(MemNode)*2 + size3);
   MemNode *tail2 = mem->pair;
   
-  //create new tail/head in middle of segment
-  unsigned char *c = (unsigned char*) (mem + 1);
-  MemNode *tail = (MemNode*) (c + size2 - sizeof(MemNode));
-  MemNode *head2 = tail + 1;
+  tail1->checksum = tail2->checksum = MAGIC_TAIL_CHECKSUM;
+  head1->checksum = head2->checksum = MAGIC_HEAD_CHECKSUM;
   
-  //size_t size3 = (sizeof(MemNode)*2 + mem->size);
+  *tail1 = *head1;
+  *head2 = *tail2;
   
-  *tail = *mem;
-  *head2 = *tail;
+  head1->pair = tail1;
+  tail1->pair = head1;
   
-  head2->next = head2->prev = tail->next = tail->prev = NULL;
+  head2->pair = tail2;
+  tail2->pair = head2;
   
-  tail->size = size2;
-  tail->pair = mem;
+  uintptr_t n = ((uintptr_t)tail2) - ((uintptr_t)head2);
   
-  head2->size = ((unsigned char*)mem->pair) - (unsigned char*)(head2 + 1);
-  mem->pair->size = size;
-  head2->pair = mem->pair;
-  mem->pair->pair = head2;
+  head1->size = tail1->size = size3;
+  head2->size = tail2->size = n - sizeof(MemNode);
   
-  mem->file = tail->file = file;
-  mem->line = tail->line = line;
-  mem->pid = tail->pid = k_curtaskp->tid;
-  
-  //link in new head to free list
-  klist_prepend(&freelist, head2);
-  
-  mem->pair = tail;
-  
-  mem->checksum = head2->checksum = MAGIC_HEAD_CHECKSUM;
-  tail->checksum = tail2->checksum =  MAGIC_TAIL_CHECKSUM;
+  klist_append(&freelist, head2);
   
   klock_unlock(&kmalloc_lock);
   return ++mem;
@@ -230,6 +243,23 @@ int _ktestmem(void *vmem) {
   
   if (mem->checksum != MAGIC_HEAD_CHECKSUM && mem->checksum != MAGIC_TAIL_CHECKSUM)
     return 0;
+  
+  if (mem->pid == MEM_FREED)
+    return 0;
+  
+  uintptr_t addr = ((uintptr_t)mem) + mem->size + sizeof(MemNode);
+  
+  if (addr != (uintptr_t)mem->pair) {
+    klogf("HEAP ERROR: %x: Block tail error! %x should be %x\n", mem, mem->pair, addr);
+    return 0;
+  }
+  
+  uintptr_t base = (uintptr_t)vmem;
+  
+  if (base & 7) {
+    klogf("eek, alignment error! %x\n", vmem);
+    return 0;
+  }
   
   return 1;
 }
@@ -296,6 +326,29 @@ int _kfree(void *vmem, char *file, int line) {
   return 1;
 }
 
+static void _kprintf_block(MemNode *node, int indent) {
+  unsigned char buf[64];
+  
+  int len = node->file ? strnlen(node->file, 64) : 0;
+  memcpy(buf, node->file, len);
+  buf[len] = 0;
+  
+  for (int i=0; i<indent; i++)
+    kprintf("\t");
+  kprintf("Memory Block at \n");
+  
+  for (int i=0; i<indent; i++)
+    kprintf("\t");
+  kprintf("\tsize: %d, hchecksum: %d, tchecksum: %d, pair: %x\n", node->size, node->checksum,
+          node->pair->checksum, node->pair);
+          
+  for (int i=0; i<indent; i++)
+    kprintf("\t");
+  kprintf("\t%s:%d\n", buf, node->line);
+  
+  terminal_flush();
+}
+
 int _kprintblocks(char *file, int line) {
   MemNode *node;
   
@@ -308,28 +361,50 @@ int _kprintblocks(char *file, int line) {
       //print bad blocks later
       break;
     }
-    kprintf("Block %x:\n", node);
-    kprintf("\tsize: %d, checksum: %d, pair: %x\n", node->size, node->checksum, node->pair);
+    
+    _kprintf_block(node, 0);
     terminal_flush();
   }
   
   kprintf("\n");
   terminal_flush();
   
+  int bad = 0;
+  
   kprintf("==== Bad blocks ===\n");
   for (node = alloclist.first; node; node=node->next) {
     if (!_ktestmem(node+1)) {
-      kprintf("Bad memory block at %x:\n", node);
-      kprintf("\tsize: %d, hchecksum: %d, tchecksum: %d, pair: %x\n", node->size, node->checksum, node->pair->checksum, node->pair);
-      terminal_flush();
+      kprintf("Bad ");
+      _kprintf_block(node, 0);
+      bad = 1;
     }
   }
   
-  terminal_flush();
+  if (bad) { //only do overlap test if no bad blocks
+    klock_unlock(&kmalloc_lock);
+    return -1;
+  }
+  
+  //overlap test
+  for (MemNode *n1 = alloclist.first; node; node=node->next) {
+    for (MemNode *n2 = alloclist.first; n2; n2=n2->next) {
+      if (n1 == n2)
+        continue;
+      
+      uintptr_t a1 = (uintptr_t)n1, a2 = ((uintptr_t)n1->pair) + sizeof(MemNode);
+      uintptr_t b1 = (uintptr_t)n2, b2 = ((uintptr_t)n2->pair) + sizeof(MemNode);
+      
+      if (a2 >  b1 && a1 < b2) {
+        klogf("HEAP ERROR: overlapping blocks:\n");
+        _kprintf_block(n1, 1);
+        _kprintf_block(n2, 1);
+      }
+    }
+  }
   
   klock_unlock(&kmalloc_lock);
   
-  return 0;
+  return -bad;
 }
 
 int test_kmalloc() {

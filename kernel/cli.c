@@ -15,10 +15,13 @@
 #include "task/process.h"
 
 int ls_test_command(int argc, char **argv) {
+  kprintf("A!\n");
+  
   Process *self = process_get_current();
   int fd = process_get_stdout(self);
   FILE _file = {fd}, *stdout = &_file;
   
+  kprintf("B!\n");
   
   fprintf(stdout, "argc: %d, argv: %x\n", argc, argv);
   
@@ -27,10 +30,14 @@ int ls_test_command(int argc, char **argv) {
   }
   fprintf(stdout, "\n");
   
+  kprintf("C!\n");
+  
   if (argc < 2) {
     fprintf(stdout, "missing argument\n");
     return -1;
   }
+  
+  kprintf("D!\n");
   
   return 0;
   
@@ -98,6 +105,11 @@ int kcli_finish(int retval, int tid, int pid) {
 
 int kcli_exec(char *name, int argc, char **argv, int (*main)(int argc, char **argv), int wait) 
 {
+  uintptr_t addr = (uintptr_t)main;
+  kprintf("ADDR: %x, %x\n", addr, addr & 7);
+  
+  //return -1; //XXX
+  
   Process *proc = spawn_process(name, argc, argv, main);
   Process *self = process_get_current();
   
@@ -112,7 +124,7 @@ int kcli_exec(char *name, int argc, char **argv, int (*main)(int argc, char **ar
   process_start(proc);
   
   if (wait) {
-    //process_wait(proc);
+    process_wait(proc);
     //process_close(proc);
   }
   
@@ -224,12 +236,12 @@ int kcli_main(int argc, char **argv) {
             
             //asm("CLI");
             //setup_root();
-            kprintf("\n\n\n");
-            test_rootfs();
-            kprintf("\n\n\n");
+            //kprintf("\n\n\n");
+            //test_rootfs();
+            //kprintf("\n\n\n");
             //asm("STI");
             
-            /*
+            //*
             char **argv = kmalloc(sizeof(char*)*MAX_OUT);
             strcpy(commandbuf+3, curworkingdir);
             commandbuf[2] = ' ';
@@ -248,7 +260,7 @@ int kcli_main(int argc, char **argv) {
             kcli_exec(commandbuf, argc, argv, fs_test_command, 1);
             fprintf(stdout, "%s> ", curworkingdir);
           } else if (!strcmp(commandbuf, "heap") || !strcmp(commandbuf, "h")) {
-            kprintblocks();
+            test_kmalloc();
           } else if (!strcmp(commandbuf, "s") || !strcmp(commandbuf, "bt")) {
             extern void stacktrace();
             

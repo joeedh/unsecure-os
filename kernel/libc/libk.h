@@ -11,5 +11,7 @@ short getchar_nowait();
 void libk_initialize();
 
 int kprintf(char *args,...);
+#define klogf kprintf
+//int klogf(char *args,...);
 
 #endif /* _LIBK_H */

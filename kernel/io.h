@@ -1,14 +1,6 @@
 #ifndef _K_IO_H
 #define _K_IO_H
 
-//#define PADDINGOK #pragma GCC diagnostic ignored "-Wpadded"
-#define MAX_TASKS 32 //keep up-to-date with nasm code
-
-#define MEM_STACK_BASE (1024*1024*12)
-#define MEM_STACK_INDV_SIZE (1024*512)
-#define MEM_STACK_END (MEM_STACK_BASE + MEM_STACK_INDV_SIZE*MAX_TASKS)
-#define MEM_STACK_SIZE (MEM_STACK_END - MEM_STACK_BASE)
-
 #if !defined(__cplusplus)
 #include <stdbool.h> /* C doesn't have booleans by default. */
 #endif
@@ -86,6 +78,22 @@ static inline unsigned int read_esp(void)
     asm volatile ( "mov %%esp, %0" : "=r"(val) );
     return val;
 }
+
+static inline unsigned int read_ebx(void)
+{
+    unsigned int val;
+    asm volatile ( "mov %%ebx, %0" : "=r"(val) );
+    return val;
+}
+
+//*
+static inline unsigned int read_ecx(void)
+{
+    unsigned int val;
+    asm volatile ( "mov %%ecx, %0" : "=r"(val) );
+    return val;
+}
+//*/
 
 //*
 static inline unsigned int read_ebp(void)

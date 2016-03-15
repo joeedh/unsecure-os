@@ -14,7 +14,7 @@
 #define PIC_READ_ISR                0x0b    /* OCW3 irq service next CMD read */
 
 #define PIC_EOI		0x20		/* End-of-interrupt command code */
- 
+
 void interrupts_initialize();
 
 extern volatile unsigned int inside_irq;
