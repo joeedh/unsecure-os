@@ -33,7 +33,7 @@ enum {
   CMD_MAKE_RELEASE = 0xF9
 };
 
-//static Lock keyboard_lock;
+static Lock keyboard_lock = LOCK_INIT;
 
 static int keyboard_handle_toggles(int c);
 static int keyboard_handle_mods(int c);
@@ -82,7 +82,8 @@ void keyboard_send_command(int command) {
 volatile unsigned char _last_tty_debug_chr = 0;
 
 void _isr_handler1() {
-  volatile unsigned int state = safe_entry();
+  //volatile unsigned int state = safe_entry();
+  asm("CLI");
   volatile unsigned char code=0, lastcode=0;
   
   do {
@@ -124,7 +125,8 @@ void _isr_handler1() {
     lastcode = code;
   } while (code != lastcode && kb_queue_b < QUEUESIZE-1);
   
-  safe_exit(state);
+  asm("STI");
+  //safe_exit(state);
 }
 
 static int keyboard_handle_mods(int c) {
@@ -188,22 +190,22 @@ static int keyboard_handle_toggles(int c) {
 }
 
 short keyboard_poll() {
-  //klock_lock(&keyboard_lock);
-  volatile unsigned int state = safe_entry();
+  klock_lock(&keyboard_lock);
+  //volatile unsigned int state = safe_entry();
   
   if (kb_queue_a != kb_queue_b) {
     volatile short ret = kb_queue[kb_queue_a];
     
     kb_queue_a = (kb_queue_a+1) & (QUEUESIZE-1);
     
-    safe_exit(state);
-    //klock_unlock(&keyboard_lock);
+    //safe_exit(state);
+    klock_unlock(&keyboard_lock);
     return ret;
   }
   
-  safe_exit(state);
+  //safe_exit(state);
   
-  //klock_unlock(&keyboard_lock);
+  klock_unlock(&keyboard_lock);
   return -1;
 }
 
@@ -268,7 +270,7 @@ int irq_kb(unsigned int n) {
 void keyboard_initialize() {
   //initialize more ascii-friendly codepage
 
-  //klock_init(&keyboard_lock);
+  klock_init(&keyboard_lock);
   
   kb_queue_a = kb_queue_b = 0;
   memset((void*)keypress, 0, 255);

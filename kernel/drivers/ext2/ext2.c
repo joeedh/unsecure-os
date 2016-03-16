@@ -511,7 +511,7 @@ static int ext2_opendir_inode(void *vself, BlockDeviceIF *device, DIR *vdir, int
   
   dir->i = 0;
   dir->size = dir->inode.size_lower32;
-  kprintf("dir: %x, dir->size: %d\n", dir, dir->inode.size_lower32);
+  //kprintf("dir: %x, dir->size: %d\n", dir, dir->inode.size_lower32);
   
   return 0;
 }
@@ -526,7 +526,7 @@ static int ext2_readdir(void *vself, BlockDeviceIF *device, struct dirent *outen
   
   if (i >= dir->size) {
     dir->finished = 1;
-    kprintf("dir: %x, dir->finished was set: %d, size: %d\n", dir, dir->finished, dir->size);
+    //kprintf("dir: %x, dir->finished was set: %d, size: %d\n", dir, dir->finished, dir->size);
     return 1;
   }
   
@@ -536,7 +536,7 @@ static int ext2_readdir(void *vself, BlockDeviceIF *device, struct dirent *outen
     
     if (entry.inode == 0 && entry.entrysize == 0) {
       dir->finished = 1;
-      kprintf("at end\n");
+      //kprintf("at end\n");
       return 1;
     }
     

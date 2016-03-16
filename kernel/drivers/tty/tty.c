@@ -21,8 +21,8 @@
 #include "../../task/critical_section.h"
 
 
-//static Lock tty_lock = {0,};
-static CriticalSection tty_lock = {0,};
+static Lock tty_lock = LOCK_INIT;
+//static CriticalSection tty_lock = {0,};
 
 #define XY2IDX(x, y) ((((y) + terminal_row_off) % VGA_HEIGHT)*VGA_WIDTH + (x));
  
@@ -84,11 +84,11 @@ void terminal_buffer_flip() {
 }
 
 void terminal_flush() {
-  ksection_lock(&tty_lock);
+  klock_lock(&tty_lock);
   
   terminal_buffer_flip();
   
-  ksection_unlock(&tty_lock);
+  klock_unlock(&tty_lock);
 }
 
 static unsigned char hexline[] = "0123456789ABCDEF";
@@ -139,17 +139,17 @@ void terminal_initialize() {
 		}
 	}
   
-  ksection_init(&tty_lock);
+  klock_init(&tty_lock);
 }
 
 void terminal_clear() {
-  ksection_lock(&tty_lock);
+  klock_lock(&tty_lock);
   
   memset(terminal_buffer, 0, VGA_WIDTH*VGA_HEIGHT*2);
   terminal_row = terminal_column = 0;
   terminal_buffer_flip();
   
-  ksection_unlock(&tty_lock);
+  klock_unlock(&tty_lock);
 }
  
 void terminal_setcolor(uint8_t color) {
@@ -162,7 +162,7 @@ void terminal_putentryat(unsigned char c, uint8_t color, size_t x, size_t y) {
 }
 
 void terminal_rowpush() {
-  //ksection_lock(&tty_lock);
+  //klock_lock(&tty_lock);
   
   //smemcpy(terminal_buffer, terminal_buffer+VGA_WIDTH, VGA_WIDTH*(VGA_HEIGHT-1));
   
@@ -173,21 +173,20 @@ void terminal_rowpush() {
   
   //terminal_buffer_flip();
 
-  //ksection_unlock(&tty_lock);
+  //klock_unlock(&tty_lock);
 }
 
 void terminal_putchar(unsigned char c) {
-  ksection_lock(&tty_lock);
+  klock_lock(&tty_lock);
   //volatile unsigned int state = safe_entry();
   
   tty_cache_len++;
   
   if (c == '\t') {
+    klock_unlock(&tty_lock);
+
     terminal_putchar(' ');
     terminal_putchar(' ');
-    
-    ksection_unlock(&tty_lock);
-    //safe_exit(state);
     return;
   }
   
@@ -234,7 +233,7 @@ void terminal_putchar(unsigned char c) {
     }
   }
   
-  ksection_unlock(&tty_lock);
+  klock_unlock(&tty_lock);
   //safe_exit(state);
 }
  

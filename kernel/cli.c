@@ -6,6 +6,7 @@
 #include "libc/stdio.h"
 #include "libc/kmalloc.h"
 #include "interrupts.h"
+#include "debug.h"
 
 #include "drivers/tty/tty.h"
 #include "io.h"
@@ -15,14 +16,17 @@
 #include "drivers/keyboard/keyboard.h"
 #include "task/process.h"
 
+enum {
+  STATE_RUNNING = 0,
+  STATE_WAITING = 1
+};
+
+static int CLI_state = 0;
+
 int ls_test_command(int argc, char **argv) {
-  kprintf("A!\n");
-  
   Process *self = process_get_current();
   int fd = process_get_stdout(self);
   FILE _file = {fd}, *stdout = &_file;
-  
-  kprintf("B!\n");
   
   fprintf(stdout, "argc: %d, argv: %x\n", argc, argv);
   
@@ -31,33 +35,20 @@ int ls_test_command(int argc, char **argv) {
   }
   fprintf(stdout, "\n");
   
-  kprintf("C!\n");
-  
   if (argc < 2) {
     fprintf(stdout, "missing argument\n");
     return -1;
-  }
+  }//*/
   
-  kprintf("D!\n");
-  
-  return 0;
-  
-  DIR *dir = opendir_inode(2); //argv[1]);
+  DIR *dir = opendir(argv[1]);
   struct dirent *entry;
   
-  fprintf(stdout, "DIR: %x\n", dir);
-  entry = readdir(dir);
-  fprintf(stdout, "entry: %x\n", entry);
-  
-  if (entry) {
-    fprintf(stdout, "  %s\n", entry->d_name);
-  }
-  
   while ((entry = readdir(dir))) {
+    //kprintf("  2%s\n", entry->d_name);
     fprintf(stdout, "  %s\n", entry->d_name);
   }
   
-  //closedir(dir);
+  closedir(dir);
   
   return 0;
 }
@@ -97,6 +88,11 @@ int kcli_finish(int retval, int tid, int pid) {
   //kprintf("pid: %d\n", pid);
   
   Process *p = process_from_pid(pid);
+  CLI_state--;
+  
+  if (CLI_state < 0)
+    CLI_state = 0;
+  
   if (p) {
     process_close(p);
   }
@@ -106,8 +102,7 @@ int kcli_finish(int retval, int tid, int pid) {
 
 int kcli_exec(char *name, int argc, char **argv, int (*main)(int argc, char **argv), int wait) 
 {
-  uintptr_t addr = (uintptr_t)main;
-  kprintf("ADDR: %x, %x\n", addr, addr & 7);
+  //uintptr_t addr = (uintptr_t)main;
   
   //return -1; //XXX
   
@@ -118,14 +113,15 @@ int kcli_exec(char *name, int argc, char **argv, int (*main)(int argc, char **ar
   process_set_stdout(proc, process_get_stdout(self));
   process_set_stderr(proc, process_get_stderr(self));
   
-  if (!wait) {
-    process_set_finish(proc, kcli_finish);
-  }
+  //if (!wait) {
+  process_set_finish(proc, kcli_finish);
+  //}
   
+  CLI_state++;
   process_start(proc);
   
   if (wait) {
-    process_wait(proc);
+    //process_wait(proc);
     //process_close(proc);
   }
   
@@ -166,13 +162,8 @@ int kcli_main(int argc, char **argv) {
   curworkingdir[0] = '/';
   curworkingdir[1] = 0;
   
-  kprintf(" argc: %x, argv: %x\n", (unsigned int)argc, (unsigned int)argv);
-  terminal_flush();
-  
   //kprintf(" stdout: %d\n\n", process_get_stdout());
   Process *proc = process_get_current();
-  kprintf("  proc: %x\n", proc);
-  kprintf("stdout: %x\n", process_get_stdout(proc));
   
   FILE _file = {proc->stdout};
   FILE *stdout = &_file;
@@ -194,6 +185,7 @@ int kcli_main(int argc, char **argv) {
   terminal_flush();
   
   debug_check_interrupts();
+  int laststate = CLI_state;
   
   while (1) {
     int printcode;
@@ -208,6 +200,15 @@ int kcli_main(int argc, char **argv) {
     
     if (hadcode) {
       terminal_flush();
+    }
+    
+    if (CLI_state != laststate && !CLI_state) {
+      fprintf(stdout, "%s> ", curworkingdir);
+    }
+    
+    laststate = CLI_state;
+    if (CLI_state) {
+      continue;
     }
     
     short code = keyboard_poll(); //getchar_nowait();
@@ -267,9 +268,7 @@ int kcli_main(int argc, char **argv) {
           } else if (!strcmp(commandbuf, "heap") || !strcmp(commandbuf, "c")) {
             return 0;
           } else if (!strcmp(commandbuf, "s") || !strcmp(commandbuf, "bt")) {
-            extern void stacktrace();
-            
-            stacktrace();
+            stacktrace(kprintf);
             kprintf(" %x\n", get_eip());
           }
           

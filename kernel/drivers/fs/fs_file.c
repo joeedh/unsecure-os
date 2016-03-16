@@ -283,7 +283,7 @@ struct dirent *readdir(DIR *dir) {
   klock_unlock(&device->lock);
   
   if (ret != 0) {
-    kprintf("RET: %d\n", ret);
+    //kprintf("RET: %d\n", ret);
     return NULL;
   } else {
     return entry;

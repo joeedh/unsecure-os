@@ -11,13 +11,13 @@
 typedef volatile struct CriticalSection {
   volatile int state, irqstate;
   volatile unsigned int owner, pad;
-#ifdef LOCK_DEBUG
+#ifdef CRITICAL_SECTION_DEBUG
   const char *file;
   int line;
 #endif
 } CriticalSection;
 
-#ifdef LOCK_DEBUG
+#ifdef CRITICAL_SECTION_DEBUG
   #define DEBUG_ARGS , const char *file, int line) {
   #define ksection_init(lock) _ksection_init(lock, __FILE__, __LINE__)
   #define ksection_lock(lock) _ksection_lock(lock, __FILE__, __LINE__)
@@ -50,14 +50,14 @@ restart:
     //asm("PAUSE");
   } while (lock->owner != 0);
   
-  volatile unsigned int state = safe_entry();
+  //volatile unsigned int state = safe_entry();
   
   if (lock->owner != 0) {
-    safe_exit(state);
+    //safe_exit(state);
     goto restart;
   }
   
-  lock->irqstate = state;
+  //lock->irqstate = state;
   lock->owner = tid;
   lock->state = 1;
 }
@@ -70,11 +70,11 @@ static inline void _ksection_unlock(CriticalSection *lock DEBUG_ARGS) {
   }
   
   if (!--lock->state) {
-    volatile unsigned int state = lock->irqstate;
+    //volatile unsigned int state = lock->irqstate;
     
-    lock->irqstate = 0xffff;
+    //lock->irqstate = 0xffff;
     lock->owner = 0;
-    safe_exit(state);
+    //safe_exit(state);
   }
 }
 #endif /* _CRITICAL_SECTION_H */

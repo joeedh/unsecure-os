@@ -14,32 +14,38 @@
 #include "../drivers/fs/memfile.h"
 #include "../task/task.h"
 #include "../task/lock.h"
+#include "../task/rwlock.h"
 #include "../timer.h"
 
 List running_processes, finishing_processes;
 volatile unsigned int pidgen;
-volatile Process *curproc;
-static Lock plock;
+
+static RWLock plock = LOCK_INIT;
 
 static Process kernelproc;
 static LinkNode kernelproc_thread;
 
 extern Process processes[MAX_TASKS];
+static int used_processes[MAX_TASKS] = {0,};
 
 static void _nullop_proc_finishfunc(int retval, int tid, int pid) {
 }
 
 void process_initialize() {
   pidgen = 1;
-  klock_init(&plock);
+  krwlock_init(&plock);
   
+  memset(used_processes, 0, sizeof(used_processes));
   memset(processes, 0, sizeof(processes));
   memset(&running_processes, 0, sizeof(running_processes));
   memset(&finishing_processes, 0, sizeof(finishing_processes));
   
   //create main process
   Process *process = &kernelproc;
-
+  
+  //k_curtaskp should already exist and point at main thread
+  k_curtaskp->proc = process;
+  
   memset(process, 0, sizeof(Process));
 
   process->pid = 0;
@@ -51,11 +57,12 @@ void process_initialize() {
   
   klist_append(&running_processes, process);
   klist_append(&process->threads, node);
+  
+  used_processes[0] = 1;
 }
 
 Process *process_from_pid(intptr_t pid) {
-  klock_lock(&plock);
-  unsigned int state = safe_entry();
+  krwlock_rlock(&plock);
   
   Process *p = NULL;
   for (p=running_processes.first; p; p=p->next) {
@@ -64,55 +71,18 @@ Process *process_from_pid(intptr_t pid) {
     }
   }
   
-  safe_exit(state);
-  klock_unlock(&plock);
+  krwlock_unrlock(&plock);
   
   return p;
 }
 
 Process *process_get_current() {
-  klock_lock(&plock);
-  unsigned int state = safe_entry();
-  
-  volatile intptr_t pid = k_curtaskp->pid;
-  
-  //kprintf("pid: %x\n", pid);
-  
-  Process *p = NULL;
-  
-  for (p=running_processes.first; p; p=p->next) {
-    //kprintf("  pid2: %x\n", p->pid);
-    
-    if (p->pid == pid) {
-      break;
-    }
-  }
-  
-  safe_exit(state);
-  klock_unlock(&plock);
-  return p;
-  
-/*
-//kindof a bit stupid. . .searches process threads
-//for one whose pid matches k_curtaskp->pid
+  volatile unsigned int state = safe_entry();
 
-  Process *p = NULL;
-  
-  for (p=running_processes.first; p; p=p->next) {
-    LinkNode *t;
-    
-    for (t=p->threads.first; t; t=t->next) {
-      unsigned int tid = (unsigned int)t->data;
-      
-      if (tid == k_curtaskp->tid) {
-        return p;
-      }
-    }
-  }
-  
-  asm("STI");
-  return NULL;
-  */
+  Process *ret = (Process*) k_curtaskp->proc;
+
+  safe_exit(state);
+  return ret;
 }
 
 int process_get_stdin(Process *p) {
@@ -127,55 +97,67 @@ int process_get_stderr(Process *p) {
   return p ? p->stderr : -1;
 }
 
-
 static Process *alloc_process() {
-  klock_lock(&plock);
-  unsigned int state = safe_entry(); //disable interrupts;
+  krwlock_lock(&plock);
+  
   Process *p = NULL;
   int i = 0;
   
   for (i=0; i<MAX_TASKS; i++) {
-    if (!processes[i].used) {
+    if (!used_processes[i]) {
       p = processes + i;
       p->used = 1;
+      
+      used_processes[i] = 1;
       break;
     }
   }
   
   if (i == MAX_TASKS) {
-    klock_unlock(&plock);
-    safe_exit(state);
+    krwlock_unlock(&plock);
 
-    kerror(0, "Hit maximum number of processors!");
+    e9printf("Hit maximum number of processes!\n");
     return NULL;
   }
   
-  klock_unlock(&plock);
-  safe_exit(state);
-  
+  krwlock_unlock(&plock);
   return processes + i;
 }
 
 static void free_process(Process *p) {
-  klock_lock(&plock);
-  unsigned int state = safe_entry(); //disable interrupts;
+  krwlock_lock(&plock);
+  int found = 0;
+  
+  for (int i=0; i<MAX_TASKS; i++) {
+    if (processes + i == p) {
+      found = 1;
+      used_processes[i] = 0;
+      break;
+    }
+  }
+  
+  if (!found) {
+    krwlock_unlock(&plock);
+  
+    e9printf("FAILED TO FREE PROCESS STRUCT\n");
+    return;
+  }
   
   //clear p->used
   p->used = 0;
   
-  klock_unlock(&plock);
-  safe_exit(state);
+  krwlock_unlock(&plock);
 }
 
 //returns. . .pid?
 Process *spawn_process(const char *name, int argc, char **argv, int (*main)(int argc, char **argv)) {
-  klock_lock(&plock);
-  unsigned int state = safe_entry();
+  krwlock_lock(&plock);
   
   Process *process = alloc_process(); //kmalloc(sizeof(Process));
 
   memset(process, 0, sizeof(Process));
 
+  process->used = 1;
   process->retval = 0;
   process->stdin = 0; 
   process->stdin = 0;
@@ -189,8 +171,7 @@ Process *spawn_process(const char *name, int argc, char **argv, int (*main)(int 
   
   strncpy(process->name, name, sizeof(process->name));
   
-  safe_exit(state);
-  klock_unlock(&plock);
+  krwlock_unlock(&plock);
   return process;
 }
 
@@ -215,17 +196,15 @@ int process_set_finish(Process *process, void *finishfunc) {
 }
 
 void _process_finish(int retval, int tid, int pid) {
-  klock_lock(&plock);
-  unsigned int state = safe_entry();
+  krwlock_lock(&plock);
 
   Process *p = process_from_pid(pid);
 
   if (!p) {
-    kprintf("    reval: %x, tid: %x, pid: %x\n", retval, tid, pid);
-    kprintf("KERNEL ERROR: process_from_pid returned NULL!\n");
+    e9printf("    reval: %x, tid: %x, pid: %x\n", retval, tid, pid);
+    e9printf("KERNEL ERROR: process_from_pid returned NULL!\n");
     
-    safe_exit(state);
-    klock_unlock(&plock);
+    krwlock_unlock(&plock);
     return;
   }
 
@@ -236,14 +215,12 @@ void _process_finish(int retval, int tid, int pid) {
 
   p->retval = retval;
 
-  safe_exit(state);
-  klock_unlock(&plock);
+  krwlock_unlock(&plock);
   p->finishfunc(retval, tid, pid);  
 }
 
 int process_start(Process *process) {
-  klock_lock(&plock);
-  volatile unsigned int state = safe_entry();
+  krwlock_lock(&plock);
   
   LinkNode *thread = kmalloc(sizeof(LinkNode));
   
@@ -262,27 +239,24 @@ int process_start(Process *process) {
   klist_append((List*)&running_processes, process);
   klist_append((List*)&process->threads, thread);
 
-  //kprintf("  argc  : %x\n", process->argc);
-  //kprintf("  argv  : %x\n", process->argv);
-  //kprintf("  main  : %x\n", process->entryfunc);
-  //kprintf("  finish: %x\n", _process_finish);
-  //kprintf("  pid   : %x\n", process->pid);
+  //e9printf("  argc  : %x\n", process->argc);
+  //e9printf("  argv  : %x\n", process->argv);
+  //e9printf("  main  : %x\n", process->entryfunc);
+  //e9printf("  finish: %x\n", _process_finish);
+  //e9printf("  pid   : %x\n", process->pid);
   
-  safe_exit(state);
-  klock_unlock(&plock);
+  krwlock_unlock(&plock);
   
-  thread->data = (void*) spawn_task(process->argc, process->argv, process->entryfunc, _process_finish, process->pid);
+  thread->data = (void*) spawn_task(process->argc, process->argv, process->entryfunc, _process_finish, process);
   
   return 0;
 }
 
 int process_close(Process *process) {
-  klock_lock(&plock);
-  unsigned int state = safe_entry();
+  krwlock_lock(&plock);
 
   if (process->state & PROC_ZOMBIE) {
-    safe_exit(state);
-    klock_unlock(&plock);
+    krwlock_unlock(&plock);
     return -1;
   }
 
@@ -309,8 +283,7 @@ int process_close(Process *process) {
   
   free_process(process); //kfree(process);
   
-  safe_exit(state);
-  klock_unlock(&plock);
+  krwlock_unlock(&plock);
   
   return 0;
 }

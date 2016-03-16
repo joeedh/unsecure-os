@@ -15,7 +15,7 @@ i686-elf-gcc -g -DINIT_SECTION_ASM_OP=.init -fno-omit-frame-pointer -funsigned-c
                                              kmalloc.o printf.o tty.o keyboard.o memblock.o memory_file.o mempipe.o \
                                              ext2.o blockdevice.o \
                                              fprintf.o stdio.o cli.o \
-                                             pci.o \
+                                             pci.o e9printf.o \
                                              tty_file.o fs_file.o symbol_table_gen.o debug.o -ffreestanding -O2 -nostdlib  \
                                              -lgcc -funsigned-char 
 

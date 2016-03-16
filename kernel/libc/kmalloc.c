@@ -15,7 +15,7 @@
 #define MEM_FREED (-5)
 
 //Lock kmalloc_lock
-CriticalSection kmalloc_lock;
+CriticalSection kmalloc_lock = {0,};
 
 typedef struct MemNode {
   struct MemNode *next, *prev;

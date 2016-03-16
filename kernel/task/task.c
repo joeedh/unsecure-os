@@ -8,6 +8,15 @@
 #include "../libc/string.h"
 #include "../drivers/keyboard/keyboard.h"
 #include "../drivers/tty/tty.h"
+#include "rwlock.h"
+
+#include "process.h"
+
+static RWLock tlock = RWLOCK_INIT;
+
+#ifdef LOCK_DEBUG
+volatile int disable_all_locks = 0;
+#endif
 
 extern volatile Task tasks[];
 volatile Task volatile * volatile k_lasttaskp;
@@ -25,6 +34,8 @@ extern void __initMainTask();
 extern void *stack_top;
 
 void tasks_initialize() {
+  krwlock_init(&tlock);
+  
   k_totaltasks = k_tidbase = 1;
   
   memset((void*)taskstacks, 0, sizeof(taskstacks));
@@ -50,6 +61,8 @@ void tasks_initialize() {
 }
 
 static unsigned int alloc_stack() {
+  //krwlock_lock(&tlock);
+  
   for (int i=0; i<MAX_TASKS; i++) {
     if (taskstacks[i] == 0) {
       unsigned int addr = MEM_STACK_BASE + MEM_STACK_INDV_SIZE*i;
@@ -59,10 +72,13 @@ static unsigned int alloc_stack() {
         addr = 8 - (addr & 7);
       
       taskstacks[i] = addr;
+      
+      //krwlock_unlock(&tlock);
       return addr;
     }
   }
   
+  //krwlock_unlock(&tlock);
   kerror(0, "Failed to allocated stack");
   
   return 0L;
@@ -72,22 +88,34 @@ void _null_finishcb(int retval, int tid, int pid) {
 }
 
 void free_stack(unsigned long stack) {
+  int found = 0;
+  
   for (int i=1; i<MAX_TASKS+1; i++) {
     if (taskstacks[i] == stack) {
       taskstacks[i] = 0;
+      found = 1;
       break;
     }
   }
   
-  kprintf("FAILED TO FREE STACK\n");
-  terminal_flush();
+  if (!found) {
+    e9printf("FAILED TO FREE STACK\n");
+  }
 }
 
 //*
 void task_cleanup(volatile Task *task, int retval) {
-  asm("CLI");
+  task->finishcb(retval, task->tid, task->pid);
+  
+  if (task->flag == TASK_DEAD) {
+    asm("STI");
+    return;
+  }
   
   int iscurrent = task == k_curtaskp;
+  
+  //krwlock_lock(&tlock);
+  asm("CLI");
   
   //take out of schedule loop
   task->tid = 0; //clear tid
@@ -95,7 +123,7 @@ void task_cleanup(volatile Task *task, int retval) {
   task->next->prev = task->prev;
   task->flag = TASK_DEAD;
 
-  task->finishcb(retval, task->tid, task->pid);
+  //krwlock_unlock(&tlock);
   
   if (iscurrent) {
     free_stack((unsigned long) task->stack);
@@ -111,7 +139,7 @@ void task_cleanup(volatile Task *task, int retval) {
 //*/
 
 void task_destroy(int tid, int retval, int wait_if_inside) {
-  unsigned int state = safe_entry();
+  asm("CLI");
   
   Task *task = task_get(tid);
   
@@ -124,18 +152,18 @@ void task_destroy(int tid, int retval, int wait_if_inside) {
     
     task_cleanup(task, retval);
     
-    safe_exit(state);
+    asm("STI");
     
     //we're in the killed task? wait for task switch
     if (wait_if_inside && task == k_curtaskp) { 
-      //while (1) {
-      //}
+      while (1) {
+      }
     }
     
     return;
   }
   
-  safe_exit(state);
+  asm("STI");
 }
 
 extern void __initTask2(volatile unsigned int *stack, void *start, volatile Task *newtask);
@@ -167,8 +195,6 @@ void _task_cleanup() {
   volatile Task *task = k_curtaskp;
   int retval = read_eax();
   
-  kprintf("TASK END: %d\n", retval);
-  
   task_cleanup(task, retval);
 }
 
@@ -182,7 +208,7 @@ Task *task_get(int tid) {
 }
 
 int spawn_task(int argc, char **argv, int (*main)(int argc, char **argv),
-                void (*finishcb)(int retval, int tid, int pid), intptr_t pid) {
+                void (*finishcb)(int retval, int tid, int pid), struct Process *proc) {
   asm("cli");
 
   volatile Task *task = NULL;
@@ -226,11 +252,12 @@ int spawn_task(int argc, char **argv, int (*main)(int argc, char **argv),
   task->sleep = task_switch_granularity;
   task->argc = argc;
   task->argv = argv;
-  task->pid = pid;
+  task->pid = proc->pid;
+  task->proc = proc;
   
   stack = (unsigned int*) task->stack;
 
-  //kprintf(":argc: %x, argv: %x stack: %x\n", (unsigned int) argc, (unsigned int) argv, (unsigned int)task->stack);
+  //e9printf(":argc: %x, argv: %x stack: %x\n", (unsigned int) argc, (unsigned int) argv, (unsigned int)task->stack);
     
   *stack-- = (unsigned int) argv;
   *stack-- = (unsigned int) argc;
@@ -245,8 +272,7 @@ int spawn_task(int argc, char **argv, int (*main)(int argc, char **argv),
   
   /*
   extern unsigned char myTss[0x64];
-  kprintf("Ready.  myTss: %x\n", myTss);
-  terminal_flush();
+  e9printf("Ready.  myTss: %x\n", myTss);
   int i2=0;
   while (i2++ < 250000) {
   }

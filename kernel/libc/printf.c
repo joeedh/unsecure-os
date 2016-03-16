@@ -8,11 +8,7 @@
 #include "libk.h"
           
 #ifndef COLOR_HANDLER
-#define COLOR_HANDLER\
-  case '^':\
-    i++;\
-    terminal_setcolor(va_arg(vl, unsigned int));\
-    break;
+#define COLOR_HANDLER terminal_setcolor(va_arg(vl, unsigned int));
 #else
 #define COLOR_HANDLER
 #endif
@@ -58,8 +54,8 @@ static int mykputuhex(void *arg, unsigned int n) {
     n2 /= 16;
   }
   
-  terminal_putchar('0');
-  terminal_putchar('x');
+  PUTCHAR('0');
+  PUTCHAR('x');
   
   while (i > 0) {
     i--;
@@ -142,7 +138,10 @@ PRINTF {
           written++;
           PUTCHAR('%');
           break;
-        COLOR_HANDLER
+        case '^':
+          i++;
+          COLOR_HANDLER
+          break;
         case 'c':
           PUTCHAR(c);
           i++;

@@ -241,16 +241,6 @@ void kernel_main(void *bootinfo1) {
   Process *proc = spawn_process("sh", 4, argv, kcli_main);
   process_start(proc);
   
-  /*
-  kprintf("Started Task! %x\n", k_curtaskp);
-  terminal_flush();
-  
-  spawn_task(0, NULL, kernel_task2, NULL, 0);
-  
-  kprintf("              %x\n", k_curtaskp);
-  terminal_flush();
-  //*/
-  
   //paranoia check to ensure interrupts are now enabled
   asm("STI");
   
@@ -303,8 +293,6 @@ int kernel_task2(int argc, char **argv) {
 
 int kernel_task1(int argc, char **argv) {
   extern unsigned char __k_gdt[][GDT_SIZE];
-  
-  //spawn_task(0, NULL, kernel_task2);
   
 	/* Since there is no support for newlines in terminal_putchar
          * yet, '\n' will produce some VGA specific character instead.

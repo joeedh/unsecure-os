@@ -5,6 +5,7 @@
 #include "drivers/keyboard/keyboard.h"
 #include "definitions/memory.h"
 #include "task/task.h"
+#include "debug.h"
 
 #include "io.h"
 #include "interrupts.h"
@@ -125,10 +126,8 @@ uint16_t PIC_get_isr(void)
     return __pic_get_irq_reg(PIC_READ_ISR);
 }
 
-extern void stacktrace();
-
 static inline int kprintinfo() {
-  stacktrace();
+  stacktrace(kprintf);
   
   kprintf("\n============================\n");
   terminal_flush();
