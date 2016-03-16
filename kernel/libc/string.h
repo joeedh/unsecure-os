@@ -156,6 +156,73 @@ static size_t strcspn ( const char * str1, const char * str2 ) {
   return i;
 }
 
+static size_t strspn ( const char * str1, const char * str2 ) {
+  if (!str1 || !str2) {
+    return 0;
+  }
+  
+  unsigned char *a = (unsigned char*)str1;
+  size_t i = 0;
+  int ok = 0;
+  
+  while (*a) {
+    unsigned char *b = (unsigned char*)str2;
+    
+    ok = 0;
+    while (*b) {
+      if (*b == *a) {
+        ok = 1;
+        break;
+      }
+      
+      b++;
+    }
+    
+    if (!ok) {
+      break;
+    }
+    i++, a++;
+  }
+  
+  return i;
+}
+
+static unsigned char *strcat(unsigned char *a, unsigned char *b) {
+  int len = strlen(a);
+  a += len;
+  
+  while (*b) {
+    *a++ = *b++;
+  }
+  
+  *a = 0;
+  return a;
+}
+
+//non-starndard function
+static inline int iswhitespace(int c);
+
+static unsigned char *strtrim(const unsigned char *str) {
+  char *c = (unsigned char*) str;
+  
+  while (*c && iswhitespace(*c)) {
+    c++;
+  }
+  
+  int end = strlen(c)-1;
+  
+  while (end >= 0 && iswhitespace(c[end])) {
+    end--;
+  }
+  
+  if (!iswhitespace(c[end])) {
+    end++;
+  }
+  
+  c[end] = 0;
+  return c;
+}
+
 //find last occurance of character
 static unsigned char *strrchr(const unsigned char *str, unsigned int character) {
   unsigned char *c = (char*) str;

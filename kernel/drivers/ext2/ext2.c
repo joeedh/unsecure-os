@@ -698,7 +698,7 @@ int ext2_path_to_inode(void *vself, BlockDeviceIF *device, const char *utf8path,
     if (i == 0) {
       i = strlen(str);
     }
-  
+    
     str[i] = 0;
     //kprintf("a directory: %s\n", str);
     

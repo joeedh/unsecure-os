@@ -5,6 +5,7 @@
 #include "drivers/blockdevice/blockdevice.h"
 #include "libc/stdio.h"
 #include "libc/kmalloc.h"
+#include "libc/path.h"
 #include "interrupts.h"
 #include "debug.h"
 
@@ -30,15 +31,17 @@ int ls_test_command(int argc, char **argv) {
   
   fprintf(stdout, "argc: %d, argv: %x\n", argc, argv);
   
-  for (int i=0; i<argc; i++) {
-    fprintf(stdout, "%s ", argv[i]);
-  }
-  fprintf(stdout, "\n");
-  
   if (argc < 2) {
     fprintf(stdout, "missing argument\n");
     return -1;
   }//*/
+  
+  normpath(argv[1]);
+  
+  for (int i=0; i<argc; i++) {
+    fprintf(stdout, "%s ", argv[i]);
+  }
+  fprintf(stdout, "\n");
   
   DIR *dir = opendir(argv[1]);
   struct dirent *entry;
@@ -144,6 +147,8 @@ int shlex_parse(char *line, char *outbuf[MAX_OUT]) {
   if (*line)
     *line = 0;
   
+  outbuf[argc++] = 0;
+  
   return argc;
 }
 
@@ -234,7 +239,56 @@ int kcli_main(int argc, char **argv) {
         if (ch == '\n' || ch == '\r') {
           commandbuf[commandlen] = 0;
           
-          if (commandlen > 0 && !strcmp(commandbuf, "ls")) {
+          if (commandlen > 2 && commandbuf[0] == 'c' && 
+              commandbuf[1] == 'd' && (commandbuf[2] == ' ' || commandbuf[2] == '\t'))
+          {
+            char *dir = commandbuf + strcspn(commandbuf, " \t") + 1;
+            dir = strtrim(dir);
+            int dlen = strlen(dir)-1;
+            if (dir[dlen-1] == '/') {
+              dir[dlen-1] = 0;
+            }
+            
+            fprintf(stdout, "dir argument: %d'%s'\n", strlen(dir), dir);
+            
+            char buf2[255];
+            
+            strcpy(buf2, *curworkingdir == '/' ? curworkingdir+1 : curworkingdir);
+            if (buf2[strlen(buf)-1] != '/') {
+              strcat(buf2, "/");
+            }
+            strcat(buf2, dir);
+            normpath(buf2);
+            fprintf(stdout, "buf2: %s\n", buf2);
+            
+            DIR *dir1 = opendir(buf2);
+            fprintf(stdout, "opendir ret: %x\n", dir1);
+            
+            if (dir1) {
+              closedir(dir1);
+              
+              if (!strcmp(dir, "..")) {
+                fprintf(stdout, "  descending\n");
+                
+                int len = strlen(curworkingdir);
+                
+                while (len >= 1 && curworkingdir[len-1] != '/') {
+                  curworkingdir[len-1] = 0;
+                  len--;
+                }
+              } else {
+                if (curworkingdir[strlen(curworkingdir)-1] != '/') {
+                  strcat(curworkingdir, "/");
+                }
+                strcat(curworkingdir, dir);
+              }
+            } else {
+              fprintf(stdout, "Error: Unknown directory %s\n", dir);
+            }
+            
+            commandlen = 0;
+            commandbuf[commandlen] = 0;
+          } else if (commandlen > 0 && !strcmp(commandbuf, "ls")) {
             extern void test_rootfs();
             extern void setup_root();
             
@@ -250,9 +304,10 @@ int kcli_main(int argc, char **argv) {
             strcpy(commandbuf+3, curworkingdir);
             commandbuf[2] = ' ';
             
+            fprintf(stdout, "|%s|\n", commandbuf);
+
             int argc = shlex_parse(commandbuf, argv);
             
-            fprintf(stdout, "\n");
             kcli_exec(commandbuf, argc, argv, ls_test_command, 1);
             fprintf(stdout, "%s> ", curworkingdir);
             //*/
