@@ -5,6 +5,7 @@
 #include "drivers/blockdevice/blockdevice.h"
 #include "libc/stdio.h"
 #include "libc/kmalloc.h"
+#include "interrupts.h"
 
 #include "drivers/tty/tty.h"
 #include "io.h"
@@ -192,6 +193,8 @@ int kcli_main(int argc, char **argv) {
   
   terminal_flush();
   
+  debug_check_interrupts();
+  
   while (1) {
     int printcode;
     int hadcode = 0;
@@ -261,6 +264,8 @@ int kcli_main(int argc, char **argv) {
             fprintf(stdout, "%s> ", curworkingdir);
           } else if (!strcmp(commandbuf, "heap") || !strcmp(commandbuf, "h")) {
             test_kmalloc();
+          } else if (!strcmp(commandbuf, "heap") || !strcmp(commandbuf, "c")) {
+            return 0;
           } else if (!strcmp(commandbuf, "s") || !strcmp(commandbuf, "bt")) {
             extern void stacktrace();
             

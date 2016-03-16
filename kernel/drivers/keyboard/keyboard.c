@@ -79,6 +79,8 @@ void keyboard_send_command(int command) {
   outb(KEYB_PORT, command);
 }
 
+volatile unsigned char _last_tty_debug_chr = 0;
+
 void _isr_handler1() {
   volatile unsigned int state = safe_entry();
   volatile unsigned char code=0, lastcode=0;
@@ -110,7 +112,11 @@ void _isr_handler1() {
       code = ch;
     }
     
-    terminal_set_debug(DEBUG_KEY, code, COLOR_LIGHT_BLUE);
+    if (code != _last_tty_debug_chr) {
+      terminal_set_debug(DEBUG_KEY, code, COLOR_LIGHT_BLUE);
+      _last_tty_debug_chr = code;
+    }
+    
     keypress[ch] = ch != code;
     
     kb_queue[kb_queue_b] = code;

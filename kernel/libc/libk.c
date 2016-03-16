@@ -187,7 +187,7 @@ int kerror(int code, char *message) {
   
   ret += kprintf("===========================================================\n");
   ret += kprintf("KERNEL ERROR:%d: %s\n", code, message);
-  ret += kprintf("===========================================================\n");
+  //ret += kprintf("===========================================================\n");
   
   //freeze
   while (1) {

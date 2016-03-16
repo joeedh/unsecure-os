@@ -178,11 +178,47 @@ void test_task_finish_finish(int ret, int tid, int pid) {
 
 extern void *_bootinfo;
 
+void test_examine_far_call_stack() {
+  asm("CLI");
+  
+  unsigned char tmp[256];
+  unsigned char *head = &tmp[200];
+  extern void __farTestA_tag();
+  
+  memset(tmp, 0xff, sizeof(tmp));
+  
+  extern uintptr_t __farTestA(void *stack_head);
+  unsigned char *tail = (unsigned char*) __farTestA(head);
+  unsigned int* itail = (unsigned int*)tail;
+  
+  kprintf("%x:\n", __farTestA_tag);
+  kprintf(":: %x %x %x %x %x", tail[0], tail[1], tail[2], tail[3], tail[4]);
+  kprintf(" %x %x %x   %x %x\n", tail[5], tail[6], tail[7], tail[8], tail[9]);
+  kprintf(": %x %x %x\n", itail[0], itail[1], itail[2]);
+
+  kprintf("\n\n");
+  
+  head = &tmp[200];
+  extern void __farTestB_tag();
+  
+  memset(tmp, 0xff, sizeof(tmp));
+  
+  extern uintptr_t __farTestB(void *stack_head);
+  tail = (unsigned char*) __farTestB(head);
+  itail = (unsigned int*)tail;
+  
+  kprintf("%x:\n", __farTestB_tag);
+  kprintf(":: %x %x %x %x %x", tail[0], tail[1], tail[2], tail[3], tail[4]);
+  kprintf(" %x %x %x   %x %x\n", tail[5], tail[6], tail[7], tail[8], tail[9]);
+  kprintf(": %x %x %x\n", itail[0], itail[1], itail[2]);
+}
+
 void kernel_main(void *bootinfo1) {
   _bootinfo = bootinfo1;
   
   startup_kernel(bootinfo1);
   
+  //test_examine_far_call_stack();
   //while (1) {
   //}
   
@@ -217,14 +253,21 @@ void kernel_main(void *bootinfo1) {
   
   //paranoia check to ensure interrupts are now enabled
   asm("STI");
-
+  
+  kprintf("Started task!\n");
+  
+  terminal_flush();
+  
   unsigned int last_tick = 0;
   unsigned int counter = 0;
+  
+  debug_check_interrupts();
   
   //kprintf("k_totaltasks: %d\n", k_totaltasks);
   while (1) {
     //asm("PAUSE");
-    //asm("STI");
+    //debug_check_interrupts();
+    
     continue;
     
     if (last_tick != kernel_tick) {

@@ -1,13 +1,14 @@
 #ifndef _LOCK_H
-
-#include "critical_section.h"
-#define Lock CriticalSection
-
-#define klock_init ksection_init
-#define klock_lock ksection_lock
-#define klock_unlock ksection_unlock
-
 #if 0
+  #include "critical_section.h"
+  #define Lock CriticalSection
+
+  #define klock_init ksection_init
+  #define klock_lock ksection_lock
+  #define klock_unlock ksection_unlock
+
+#else
+  
 #define _LOCK_H
 
 #include "../libc/string.h"

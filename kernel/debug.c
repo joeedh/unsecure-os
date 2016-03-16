@@ -64,10 +64,10 @@ void stacktrace() {
   }
   
   stack = (unsigned int*)(esp);
-  kprintf("addr: %x\n", addr);
+  //kprintf("addr: %x\n", addr);
   
   kprintf("stack: %x %x %x  %x %x %x\n", stack[0], stack[1], stack[2], stack[3], stack[4], stack[5]);
-  kprintf("       %x %x %x  %x %x %x\n", stack[6], stack[7], stack[8], stack[9], stack[10], stack[11]);
+  //kprintf("       %x %x %x  %x %x %x\n", stack[6], stack[7], stack[8], stack[9], stack[10], stack[11]);
   
   unsigned int ebp2 = read_ebp();
   kprintf("esp: %x, ebp: %x, cur ebp: %x\n", esp, ebp, ebp2);
@@ -84,12 +84,12 @@ void stacktrace() {
     unsigned int *nextstack = (unsigned int*)(*stack);
     
     if (retptr < 1024) { //far call?
-      kprintf("    far call detected!\n");
+      kprintf("    far call detected! %x\n", retptr);
       retptr = *(stack + 2); //ignore segment info, for now
     }
     
     const Sym *sym = find_symbol(retptr);
-    kprintf("  %^%s%^:    %x:%x%^\n", COLOR_CYAN, sym->name, COLOR_WHITE, retptr, sym->addr, COLOR_DEFAULT);
+    kprintf("  %^%s%^:    %x %x%^\n", COLOR_CYAN, sym->name, COLOR_WHITE, retptr, sym->addr, COLOR_DEFAULT);
     
     stack = nextstack;
     if ((unsigned int)stack < 700*1024 || (unsigned int)stack > MEM_END) {
@@ -97,6 +97,6 @@ void stacktrace() {
     }
   }
   
-  kprintf("eip: %x\n", addr);
+  //kprintf("eip: %x\n", addr);
 #endif
 }

@@ -47,7 +47,7 @@ void process_initialize() {
   process->finishfunc = _nullop_proc_finishfunc;
   
   LinkNode *node = &kernelproc_thread;
-  node->data = (Task*) k_curtaskp; //initial thread
+  node->data = (Task*) k_curtaskp->tid; //initial thread
   
   klist_append(&running_processes, process);
   klist_append(&process->threads, node);
@@ -271,7 +271,7 @@ int process_start(Process *process) {
   safe_exit(state);
   klock_unlock(&plock);
   
-  thread->data = (void*)spawn_task(process->argc, process->argv, process->entryfunc, _process_finish, process->pid);
+  thread->data = (void*) spawn_task(process->argc, process->argv, process->entryfunc, _process_finish, process->pid);
   
   return 0;
 }
@@ -290,11 +290,7 @@ int process_close(Process *process) {
   LinkNode *node, *next;
   for (node = process->threads.first; node; node=next) {
     next = node->next;
-    Task *task = node->data;
-    
-    if (task->flag != TASK_DEAD) {
-      task_destroy(task, process->retval, 0);
-    }
+    task_destroy((int)node->data, process->retval, 0);
     
     kfree(node);
   }

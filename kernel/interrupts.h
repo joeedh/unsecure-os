@@ -1,6 +1,7 @@
 #ifndef _INTERRUPTS_H
 #define _INTERRUPTS_H
 
+#include "libc/libk.h"
 #include "io.h"
 #include <stdint.h>
 
@@ -19,6 +20,14 @@ void interrupts_initialize();
 
 extern volatile unsigned int inside_irq;
 
+static inline void debug_check_interrupts() {
+  unsigned int state = read_eflags();
+  if (!(state & (1<<9))) {
+    kprintf("interrupts were DISABLED!!!!!\n");
+    asm("STI");
+  }
+}
+
 //well. . .this is a diagnostic structure anyway,
 //so I don't feel like figuring out what I did wrong to
 //make it not be aligned
@@ -30,6 +39,7 @@ typedef struct EFLAGS {
   unsigned int always_unset1:1;
   
   unsigned int adjust:1;
+  unsigned int reserved:1;
   unsigned int zero:1;
   unsigned int sign:1;
   unsigned int trap:1;

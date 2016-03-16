@@ -10,7 +10,7 @@
 
 typedef volatile struct CriticalSection {
   volatile int state, irqstate;
-  volatile unsigned int owner;
+  volatile unsigned int owner, pad;
 #ifdef LOCK_DEBUG
   const char *file;
   int line;
@@ -72,7 +72,7 @@ static inline void _ksection_unlock(CriticalSection *lock DEBUG_ARGS) {
   if (!--lock->state) {
     volatile unsigned int state = lock->irqstate;
     
-    lock->irqstate = 0;
+    lock->irqstate = 0xffff;
     lock->owner = 0;
     safe_exit(state);
   }

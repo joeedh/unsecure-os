@@ -40,7 +40,7 @@ CHECKSUM    equ -(MAGIC + FLAGS)     ; checksum of above, to prove we are multib
 extern terminal_set_debug;
 extern terminal_set_idebug;
 
-%macro set_debug_char 3
+%macro _set_debug_char 3
   pushad;
   
   push dword %3
@@ -54,7 +54,7 @@ extern terminal_set_idebug;
   popad;
 %endmacro
 
-%macro set_debug_int 4
+%macro _set_debug_int 4
   pushad;
   
   push dword %4
@@ -71,6 +71,14 @@ extern terminal_set_idebug;
   
   popad;
 %endmacro
+
+%macro set_debug_char 3
+  ;_set_debug_char %1 %2 %3
+%endmacro
+
+%macro set_debug_int 4
+  ;_set_debug_int %1 %2 %3 %4
+%endmacro
  
 ; debug channels for set_debug_char 
 %define DEBUG_ISR00 4
@@ -78,7 +86,7 @@ extern terminal_set_idebug;
 %define DEBUG_ISR14 18
 
 %define DEBUG_EXC  1
-%define DEBUG_KEY  2
+%define DEBUG_KEY  5
 
 ; Declare a header as in the Multiboot Standard. We put this into a special
 ; section so we can force the header to be in the start of the final program.
@@ -272,12 +280,12 @@ dd 0
   pushad;
   pushfd;
   
-  set_debug_char DEBUG_EXC, 69, RED
+  ;set_debug_char DEBUG_EXC, 69, RED
+  set_debug_int DEBUG_EXC, 5, %1, RED
   
   cld
   
-  mov eax, 1;
-  add [_except_depth], eax;
+  inc dword [_except_depth];
   
   mov eax, %2;
   push eax;
@@ -290,16 +298,21 @@ dd 0
   
   pop eax;
 
-  mov eax, 1;
-  sub [_except_depth], eax;
+  dec dword [_except_depth];
   
-  set_debug_char DEBUG_KEY, 101, BLACK
+  jz .cleardebug;
+  .back:
   
   popfd;
   popad;
   
   pop ebp ;pop saved frame pointer
   sti;
+  iret;
+  
+  .cleardebug:
+    set_debug_char DEBUG_EXC, 101, BLACK
+    jmp .back
 %endmacro
 
 global exr_0, exr_1, exr_2, exr_3, exr_4, exr_5;
@@ -308,7 +321,11 @@ global exr_12, exr_13, exr_14;
 
 align 8
 exr_0: exc_wrapper 0, 1
-exr_1: exc_wrapper 1, 2
+;exr_1: exc_wrapper 1, 2
+
+exr_1: ;special debug exception
+  iret;
+  
 exr_2: exc_wrapper 2, 4
 exr_3: exc_wrapper 3, 8
 exr_4: exc_wrapper 4, 16
@@ -567,6 +584,7 @@ align 8
 ; timer/task-switcher irq
 isr_0:
   ;irq_entry
+  cli;
   ctx_push
   
   ;increment tick counter
@@ -592,19 +610,55 @@ isr_0:
   
   ctx_pop
   
-  push eax;
-  mov eax, dword [esp+4];
-  set_debug_int DEBUG_ISR00, 15, eax, GREEN
-  pop eax;
+  ;push eax;
+  ;mov eax, dword [esp+4];
+  ;set_debug_int DEBUG_ISR00, 15, eax, GREEN
+  ;pop eax;
   
-  ;set_debug_int DEBUG_ISR00, 15, [k_curtaskp], GREEN
+  set_debug_int DEBUG_ISR00, 15, [k_curtaskp], GREEN
   
   ;irq_iret
+  sti;
   iret
   
 global __initTask2
 extern _task_cleanup;
 
+_farTestA2:
+  jmp __farTestA_tag.next
+  
+global __farTestA;
+__farTestA:
+  mov ebx, esp;
+  mov esp, [esp+4]; //stack head argument
+  
+  call 0x08:_farTestA2
+global __farTestA_tag
+__farTestA_tag:
+  
+  .next:
+  mov eax, esp; //return value
+  mov esp, ebx;
+  
+  ret;
+
+
+global __farTestB;
+__farTestB:
+  mov ebx, esp;
+  mov esp, [esp+4]; //stack head argument
+  
+  push dword 0x08;
+  push dword __farTestB_tag;
+  
+global __farTestB_tag;
+__farTestB_tag:
+
+  mov eax, esp; //return value
+  mov esp, ebx;
+  
+  ret;
+  
 global __switchB;
 __switchB:
   ctx_push
@@ -612,12 +666,53 @@ __switchB:
   ;set new stack head 
   mov eax, [k_curtaskp];
   mov eax, dword [eax + 12];
+  mov dword [eax], esp;
+  
+  ;jmp __initTask2.next;
+  
+global __initTask3
+__initTask3:
+  cli;
+  ;mov ebp, esp;
+  ;pushad;
+  
+  ;set threading head
+  mov eax, [k_curtaskp];
+  mov [eax], esp;
+  
+  ;store entry point
+  mov ebx, dword [esp + DWSIZE*1] 
+
+  ;switch to new stack
+  mov eax, dword [esp + DWSIZE*2] ;second argument is Task* pointer
+  mov esp, [eax]
+  
+  ;push argc/argv
+  push dword [eax + 20];
+  push dword [eax + 16];
+
+  ;push return call to _task_cleanup
+  push dword _task_cleanup;
+  push dword _task_cleanup;
+
+  push dword 0x08;
+  push ebx
+  
+  ctx_push;
   
   mov dword [eax], esp;
   
-  jmp __initTask2.next;
+  ;restore original thread's stack
+  mov esp, [k_curtaskp];
+  mov esp, [esp];
   
-__initTask2:
+  ;popad;
+  
+  ;enable interrupts again
+  sti;
+  ret;
+  
+__initTask2old:
   ;save old stack position
   mov eax, dword [k_curtaskp];
   mov dword [eax], esp;
@@ -637,7 +732,7 @@ __initTask2:
   ;put entry point before return jump pointer, on new stack
   push ebx;
   push ebx;
-  mov ebx, __initTask2.next;
+  ;mov ebx, __initTask2.next;
   
   ;set up return jump pointer on new stack
   call 0x08:__switchB;

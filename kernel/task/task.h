@@ -22,7 +22,7 @@ typedef volatile struct Task {
   volatile void *stack; //24 starting top of stack
   volatile void *entry; //28 entry point
   
-  volatile unsigned int tid; //32
+  volatile int tid; //32
   intptr_t pid;
   volatile unsigned int flag; //36
   
@@ -45,7 +45,8 @@ void tasks_initialize();
 Task *cur_task();
 void next_task();
 
-void task_destroy(volatile Task *task, int retval, int wait_if_inside);
+Task *task_get(int tid);
+void task_destroy(int tid, int retval, int wait_if_inside);
 void task_switch(volatile void *stack);
 int spawn_task(int argc, char **argv, int (*main)(int argc, char **argv),
                 void (*finishcb)(int retval, int tid, int pid), intptr_t pid);

@@ -45,6 +45,8 @@ void tasks_initialize() {
   
   //sets task->head
   __initMainTask();
+  
+  task->flag = TASK_ALIVE|TASK_SCHEDULED;
 }
 
 static unsigned int alloc_stack() {
@@ -85,25 +87,35 @@ void free_stack(unsigned long stack) {
 void task_cleanup(volatile Task *task, int retval) {
   asm("CLI");
   
+  int iscurrent = task == k_curtaskp;
+  
   //take out of schedule loop
+  task->tid = 0; //clear tid
   task->prev->next = task->next;
   task->next->prev = task->prev;
   task->flag = TASK_DEAD;
 
   task->finishcb(retval, task->tid, task->pid);
   
-  free_stack((unsigned long) task->stack);
-  asm("STI");
-  
-  while (1) { //wait for switch
+  if (iscurrent) {
+    free_stack((unsigned long) task->stack);
+    asm("STI");
+    
+    while (1) { //wait for switch
+    }
+  } else {
+    free_stack((unsigned long) task->stack);
+    asm("STI");
   }
 }
 //*/
 
-void task_destroy(volatile Task *task, int retval, int wait_if_inside) {
+void task_destroy(int tid, int retval, int wait_if_inside) {
   unsigned int state = safe_entry();
   
-  if (task->flag & TASK_SCHEDULED) {
+  Task *task = task_get(tid);
+  
+  if (task && task->tid == tid && (task->flag & TASK_SCHEDULED)) {
     task->flag = TASK_DEAD;
     
     //remove from schedule queue
@@ -127,6 +139,7 @@ void task_destroy(volatile Task *task, int retval, int wait_if_inside) {
 }
 
 extern void __initTask2(volatile unsigned int *stack, void *start, volatile Task *newtask);
+extern void __initTask3(void *start, Task *newtask);
 extern void __saveStack();
 
 typedef struct wrapper {
@@ -149,13 +162,23 @@ void wrapped_main(int argc, char **argv) {
 }
 
 void _task_cleanup() {
-  volatile Task *task = k_curtaskp;
-  
   asm("CLI");
+
+  volatile Task *task = k_curtaskp;
+  int retval = read_eax();
   
-  task_cleanup(task, read_eax());
+  kprintf("TASK END: %d\n", retval);
   
-  asm("STI");
+  task_cleanup(task, retval);
+}
+
+Task *task_get(int tid) {
+  for (int i=0; i<MAX_TASKS; i++) {
+    if (tasks[i].tid == tid) 
+      return tasks + i;
+  }
+  
+  return NULL;
 }
 
 int spawn_task(int argc, char **argv, int (*main)(int argc, char **argv),
@@ -194,8 +217,6 @@ int spawn_task(int argc, char **argv, int (*main)(int argc, char **argv),
   k_curtaskp->next->prev = task;
   k_curtaskp->next = task;
 
-  k_lasttaskp = k_curtaskp;
-
   unsigned int addr = alloc_stack();
   
   task->flag = TASK_ALIVE|TASK_SCHEDULED;
@@ -232,7 +253,7 @@ int spawn_task(int argc, char **argv, int (*main)(int argc, char **argv),
   //*/
 
   //switch to task.  will re-enable interrupts
-  __initTask2(stack, main, task);
+  __initTask3(main, task);
   
   return tid;
 }

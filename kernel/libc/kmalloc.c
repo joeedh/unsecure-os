@@ -17,18 +17,6 @@
 //Lock kmalloc_lock
 CriticalSection kmalloc_lock;
 
-#ifndef klock_init
-#define klock_init ksection_init
-#endif
-
-#ifndef klock_lock
-#define klock_lock ksection_lock
-#endif
-
-#ifndef klock_unlock
-#define klock_unlock ksection_unlock
-#endif
-
 typedef struct MemNode {
   struct MemNode *next, *prev;
   
@@ -64,7 +52,7 @@ void kmalloc_add_hole(unsigned int base, unsigned int len, const unsigned char *
 void kmalloc_init_with_holes() {
   //smemset((short*)MEM_BITMAP_START, 0, MEM_BITMAP_SIZE/2+32);
   
-  klock_init(&kmalloc_lock);
+  ksection_init(&kmalloc_lock);
   
   memset(&freelist, 0, sizeof(freelist));
   memset(&alloclist, 0, sizeof(alloclist));
@@ -134,7 +122,7 @@ void kmalloc_init_with_holes() {
 void kmalloc_init() {
   //smemset((short*)MEM_BITMAP_START, 0, MEM_BITMAP_SIZE/2+32);
   
-  klock_init(&kmalloc_lock);
+  ksection_init(&kmalloc_lock);
   
   memset(&freelist, 0, sizeof(freelist));
   memset(&alloclist, 0, sizeof(alloclist));
@@ -163,7 +151,7 @@ void kmalloc_init() {
 void *_kmalloc(size_t size, char *file, int line) {
   MemNode *mem;
   
-  klock_lock(&kmalloc_lock);
+  ksection_lock(&kmalloc_lock);
   
   //pad to eight bytes
   size_t size2 = size + sizeof(MemNode)*2;
@@ -176,7 +164,7 @@ void *_kmalloc(size_t size, char *file, int line) {
   }
   
   if (!mem) {
-    klock_unlock(&kmalloc_lock);
+    ksection_unlock(&kmalloc_lock);
     return NULL; //ran out of memory! eek!!!
   }
   
@@ -192,7 +180,7 @@ void *_kmalloc(size_t size, char *file, int line) {
     mem->checksum = MAGIC_HEAD_CHECKSUM;
     mem->pair->checksum = MAGIC_TAIL_CHECKSUM;
     
-    klock_unlock(&kmalloc_lock);
+    ksection_unlock(&kmalloc_lock);
     return ++mem;
   }
   
@@ -224,7 +212,7 @@ void *_kmalloc(size_t size, char *file, int line) {
   
   klist_append(&freelist, head2);
   
-  klock_unlock(&kmalloc_lock);
+  ksection_unlock(&kmalloc_lock);
   return ++mem;
 }
 
@@ -299,10 +287,10 @@ int _kfree(void *vmem, char *file, int line) {
   if (!vmem) 
     return 1;
   
-  klock_lock(&kmalloc_lock);
+  ksection_lock(&kmalloc_lock);
   
   if (!_ktestmem(vmem)) {
-    klock_unlock(&kmalloc_lock);
+    ksection_unlock(&kmalloc_lock);
     return 1;
   }
   
@@ -321,7 +309,7 @@ int _kfree(void *vmem, char *file, int line) {
   mem->pid = tail->pid = MEM_FREED;
   merge_blocks(mem, 0);
 
-  klock_unlock(&kmalloc_lock);
+  ksection_unlock(&kmalloc_lock);
   
   return 1;
 }
@@ -352,7 +340,7 @@ static void _kprintf_block(MemNode *node, int indent) {
 int _kprintblocks(char *file, int line) {
   MemNode *node;
   
-  klock_lock(&kmalloc_lock);
+  ksection_lock(&kmalloc_lock);
   
   kprintf("===Allocated blocks===\n");
   
@@ -381,7 +369,7 @@ int _kprintblocks(char *file, int line) {
   }
   
   if (bad) { //only do overlap test if no bad blocks
-    klock_unlock(&kmalloc_lock);
+    ksection_unlock(&kmalloc_lock);
     return -1;
   }
   
@@ -402,7 +390,7 @@ int _kprintblocks(char *file, int line) {
     }
   }
   
-  klock_unlock(&kmalloc_lock);
+  ksection_unlock(&kmalloc_lock);
   
   return -bad;
 }

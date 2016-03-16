@@ -23,7 +23,7 @@ i686-elf-gcc -g -DINIT_SECTION_ASM_OP=.init -fno-omit-frame-pointer -funsigned-c
 #objcopy --strip-debug kernel.bin
 
 python gen_symtable.py
-
+readelf --debug-dump=decodedline kernel.bin > decoded_line_data.debuginfo
 
 #i686-elf-gcc -fno-asynchronous-unwind-tables -funsigned-char -T linker.ld -o kernel.bin core_x86.o -ffreestanding -O2 -nostdlib  -lgcc -funsigned-char 
 
