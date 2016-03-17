@@ -53,6 +53,14 @@ int cat_test_command(int argc, char **argv) {
     buf[0] = 0;
   }
   buf[sizeof(buf)-1] = 0;
+  int len = strlen(buf);
+  
+  //filter out \r's
+  for (int i=0; i<len; i++) {
+    if (buf[i] == '\r') { //replace \r's with spaces
+      buf[i] = ' ';
+    }
+  }
   
   fprintf(stdout, "buf: %s\n", buf);
   fprintf(stdout, "\nread: %d\n", read);
