@@ -3,8 +3,11 @@
 #include <string.h>
 #include <stdarg.h>
 
+#include "regex.h"
 #include "regex_ast.h"
+#include "reparse.h"
 
+/*
 #ifndef REGEX_INTERN
 enum {
   ASCII,
@@ -20,6 +23,7 @@ enum {
 #define YYLTYPE int
 
 #endif
+*/
 
 unsigned char *token_to_str(int token) {
   #define _(n) case n: return #n;
@@ -45,10 +49,11 @@ unsigned char *nodetype_to_str(int token) {
     _(NWORDBREAK)
     _(NNEGATE)
     _(NANY)
-    _(KREPEAT0)
-    _(KREPEAT1)
+    _(NREPEAT0)
+    _(NREPEAT1)
+    _(NLIST)
     default:
-      return (unsigned char*)"(bad token!)";
+      return (unsigned char*)"(bad node type!)";
   }
 }
 
@@ -78,17 +83,17 @@ int ch2hex(unsigned char c) {
   }
 }
 
-int regex_state_surragate(YYSTYPE *lvalp, YYLTYPE *llocp, lexer *l) {
+int regex_state_surragate(YYSTYPE *lvalp, lexer *l) {
   if (l->surragate_i == 0) {
     l->state = l->prevstate;
-    return regex_yylex(lvalp, llocp, l);
+    return regex_yylex(lvalp, l);
   }
   
   *lvalp = l->surragate[--l->surragate_i];
   return UNICODE_BYTE;
 }
 
-int regex_state_backslash(YYSTYPE *lvalp, YYLTYPE *llocp, lexer *l) {
+int regex_state_backslash(YYSTYPE *lvalp, lexer *l) {
   unsigned char c = l->lexdata[l->lexpos++];
   unsigned char prev = l->prev;
   l->prev = c;
@@ -102,7 +107,7 @@ int regex_state_backslash(YYSTYPE *lvalp, YYLTYPE *llocp, lexer *l) {
     case '\r':
     case '\t':
       l->state = MAIN_STATE;
-      return regex_yylex(lvalp, llocp, l);
+      return regex_yylex(lvalp, l);
     case 'n':
       l->state = MAIN_STATE;
       return '\n';
@@ -157,7 +162,7 @@ int regex_state_backslash(YYSTYPE *lvalp, YYLTYPE *llocp, lexer *l) {
         l->surragate_i++;
       }
       
-      return regex_yylex(lvalp, llocp, l);
+      return regex_yylex(lvalp, l);
     }
     
     default:
@@ -167,7 +172,7 @@ int regex_state_backslash(YYSTYPE *lvalp, YYLTYPE *llocp, lexer *l) {
   }
 }
 
-int regex_state0(YYSTYPE *lvalp, YYLTYPE *llocp, lexer *l) {
+int regex_state0(YYSTYPE *lvalp, lexer *l) {
   unsigned char c = l->lexdata[l->lexpos++];
   unsigned char prev = l->prev;
   l->prev = c;
@@ -181,7 +186,7 @@ int regex_state0(YYSTYPE *lvalp, YYLTYPE *llocp, lexer *l) {
     l->state = SURRAGATE_STATE;
     l->prevstate = MAIN_STATE;
     
-    return regex_yylex(lvalp, llocp, l);
+    return regex_yylex(lvalp, l);
   }
   
   if (!c)
@@ -205,7 +210,7 @@ int regex_state0(YYSTYPE *lvalp, YYLTYPE *llocp, lexer *l) {
       return c;
     case '\\':
       l->state = ESCAPE_STATE;
-      return regex_yylex(lvalp, llocp, l);
+      return regex_yylex(lvalp, l);
     case '0':
     case '1':
     case '2':
@@ -224,7 +229,7 @@ int regex_state0(YYSTYPE *lvalp, YYLTYPE *llocp, lexer *l) {
   }
 }
 
-int regex_yylex(YYSTYPE *lvalp, YYLTYPE *llocp, lexer *l) {
+int regex_yylex(YYSTYPE *lvalp, lexer *l) {
     if (l->lexpos >= l->lexsize) {
       return 0;
     }
@@ -234,40 +239,49 @@ int regex_yylex(YYSTYPE *lvalp, YYLTYPE *llocp, lexer *l) {
     
     switch (l->state) {
       case 0:
-        return regex_state0(lvalp, llocp, l);
+        return regex_state0(lvalp, l);
       case 1:
-        return regex_state_backslash(lvalp, llocp, l);
+        return regex_state_backslash(lvalp, l);
       case 2:
-        return regex_state_surragate(lvalp, llocp, l);
+        return regex_state_surragate(lvalp, l);
       default:
         return 0;
     }
 }
 
-static void node_append(Node *node, Node *child) {
-  if (node->length >= node->totalloc) {
-    node->totalloc = (node->totalloc+1) * 2;
-    node->children = realloc(node->children, node->totalloc*sizeof(void*));
-  }
-  
-  node->children[node->totalloc++] = child;
-  child->parent = node;
+void yyerror(lexer *lex, char *msg) {
+  fprintf(stdout, "Error at %d: %s\n", lex->lexpos+1, msg);
 }
 
-static Node *node(int type, unsigned char *fmt, ...) {
+void *_re_node_append(Node *node, Node *child) {
+  if (node->length >= node->totalloc) {
+    node->totalloc = (node->totalloc + 1) * 2;
+    node->children = realloc(node->children,  node->totalloc*sizeof(void*));
+  }
+  
+  node->children[node->length] = child;
+  node->length++;
+
+  child->parent = node;
+  return node;
+}
+
+Node *_re_make_node(int type, int value, unsigned char *fmt, ...) {
   Node *node = malloc(sizeof(*node));
   va_list vl;
   
   memset(node, 0, sizeof(*node));
   
   node->type = type;
+  node->value = value;
   
   va_start(vl, fmt);
   unsigned char *c = fmt;
+  
   for (; *c; c++) {
     switch(*c) {
       case 'n':
-        node_append(node, va_arg(vl, void*));
+        _re_node_append(node, va_arg(vl, void*));
         break;
       case 'c': {
         Node *node2 = malloc(sizeof(*node2));
@@ -275,7 +289,7 @@ static Node *node(int type, unsigned char *fmt, ...) {
 
         node2->type = NCHARACTER;
         node2->value = va_arg(vl, int);
-        node_append(node, node2);
+        _re_node_append(node, node2);
         break;
       }
       case 'b': {
@@ -284,7 +298,7 @@ static Node *node(int type, unsigned char *fmt, ...) {
 
         node2->type = NWORDBREAK;
         node2->value = va_arg(vl, int);
-        node_append(node, node2);
+        _re_node_append(node, node2);
         break;
       }
       case '.': {
@@ -293,9 +307,12 @@ static Node *node(int type, unsigned char *fmt, ...) {
 
         node2->type = NANY;
         node2->value = va_arg(vl, int);
-        node_append(node, node2);
+        _re_node_append(node, node2);
         break;
       }
+      default:
+        fprintf(stderr, "parse error in _re_make_node: %c\n", *c);
+        break;
     }
   }
   

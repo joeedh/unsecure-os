@@ -225,6 +225,35 @@ int pipe(int fds[2]) {
   return 0;
 }
 
+
+int tell(int fd) {
+  FSFile *file = (FSFile*)fd;
+  
+  if (!_valid_file(fd))
+    return -1;
+  
+  _lock_file(file);
+  int ret = file->fs->tell(file->fs, file->device, file->internalhd);
+  _unlock_file(file);
+  
+  return ret;
+}
+
+int fstat(int fd, struct stat *out) {
+  FSFile *file = (FSFile*)fd;
+  
+  if (!out)
+    return -1;
+  if (!_valid_file(fd))
+    return -1;
+  
+  _lock_file(file);
+  int ret = file->fs->fstat(file->fs, file->device, file->internalhd, out);
+  _unlock_file(file);
+  
+  return ret;
+}
+
 int open(const unsigned char *path, int modeflags) {
   unsigned char path2[MAX_PATH];
   strcpy(path2, path);

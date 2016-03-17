@@ -8,6 +8,7 @@ typedef struct Node {
 
   struct Node *parent;
   struct Node **children;
+  int cur, stateid;
 } Node;
 
 enum {
@@ -17,8 +18,9 @@ enum {
   NWORDBREAK,
   NNEGATE,
   NANY,
-  KREPEAT0,
-  KREPEAT1
+  NREPEAT0,
+  NREPEAT1,
+  NLIST
 };
 
 

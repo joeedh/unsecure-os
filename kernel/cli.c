@@ -68,6 +68,37 @@ int cat_test_command(int argc, char **argv) {
   return !file ? -1 : 0;
 }
 
+void elf_test(FILE *stdout, FILE *stderr) {
+  FILE *file = fopen("/bin/ls", "rb");
+  
+  if (!file) {
+    fprintf(stdout, "Failed to open file\n");
+    return;
+  }
+  
+  struct stat st;
+  
+  if (fstat(file->fd, &st)) {
+    fprintf(stdout, "Failed to stat file\n");
+    return;
+  }
+  
+  size_t size = st.st_msize;
+  
+  if (st.st_msize <= 0) {
+    fprintf(stdout, "bad st_msize: %d\n", st.st_msize);
+    return;
+  }
+  
+  fprintf(stdout, "size: %d\n", size);
+  unsigned char *data = kmalloc(size);
+  
+  //int fstat(int fd, struct stat *out)
+  int read = fread(data, size, 1, file);
+  
+  fprintf(stdout, "read: %d of %d\n", read);
+}
+
 int ls_test_command(int argc, char **argv) {
   Process *self = process_get_current();
   int fd = process_get_stdout(self);
@@ -123,7 +154,7 @@ int fs_test_command(int argc, char **argv) {
   //safe_exit(state);
   fprintf(stdout, "fs test done!\n");
   
-  totentries = rootfs->stat(rootfs, rootdevice, 2, &mstat, NULL);
+  totentries = rootfs->stat(rootfs, rootdevice, 2, &mstat);
   
   fprintf(stdout, "stat size: %d\n", mstat.st_msize);
   fprintf(stdout, "totentries: %d\n", totentries);
@@ -289,7 +320,8 @@ int kcli_main(int argc, char **argv) {
         if (!strcmp(commandbuf, "top")) {
           print_procs(stdout);
         } else if (!strcmp(commandbuf, "t")) {
-          //*
+          elf_test(stdout, stdout);
+          /*
           char **argv = kmalloc(sizeof(char*)*MAX_OUT);
           
           fprintf(stdout, "|%s|\n", commandbuf);

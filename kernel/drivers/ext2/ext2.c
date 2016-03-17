@@ -842,6 +842,24 @@ int ext2_path_to_inode(void *vself, BlockDeviceIF *device, const char *utf8path,
   return inode;
 }
 
+static int ext3_fstat(void *self, BlockDeviceIF *device, int inode, struct stat *buf) {
+  ext2fs *fs = self;
+  ext2fs_readmeta(device, fs);
+  
+  memset(buf, 0, sizeof(*buf));
+  
+  //static int read_inode(ext2fs *efs, BlockDeviceIF *device, int inode, INode *out)
+  INode inode;
+  if (read_inode(self, device, inode, &inode) < 0) {
+    _fs_error(efs, -1, "Inode read error");
+    return -1;
+  }
+  
+  buf->st_msize = size_lower32;
+  
+  return 0;
+}
+
 static int ext3_stat(void *self, BlockDeviceIF *device, int inode, struct stat *buf, char namebuf[MAX_PATH]) {
   ext2fs *fs = self;
   ext2fs_readmeta(device, fs);
@@ -865,6 +883,8 @@ FSInterface *kext2fs_create(BlockDeviceIF *device) {
   fs->allowed_access = fs->access = O_RDONLY|O_SEARCH|O_EXEC;
   
   fs->head.stat = ext3_stat;
+  fs->head.fstat = ext3_fstat;
+  
   //fs->head.dir_getentry = dir_getentry;
   fs->head.dir_entrycount = dir_entrycount;
   fs->head.accessmode = accessmode;

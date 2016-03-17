@@ -106,7 +106,7 @@ typedef struct FSInterface {
   int (*dir_getentry)(void *self, BlockDeviceIF *device, int dir_inode, int inode, char namebuf[MAX_PATH]);
   
   //namebuf is optional
-  int (*stat)(void *self, BlockDeviceIF *device, int inode, struct stat *buf, char namebuf[MAX_PATH]);
+  int (*stat)(void *self, BlockDeviceIF *device, int inode, struct stat *buf);
   int (*fstat)(void *self, BlockDeviceIF *device, int fd, struct stat *buf);
   
   int (*chmod)(void *self, BlockDeviceIF *device, int inode, int permissions);

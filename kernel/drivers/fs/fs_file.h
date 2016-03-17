@@ -45,5 +45,7 @@ int flush(int fd);
 int pipe(int fds[2]);
 int open(const unsigned char *path, int modeflags);
 int close(int fd);
+int fstat(int fd, struct stat *out);
+int tell(int fd);
 
 #endif /* _FS_FILE_H */

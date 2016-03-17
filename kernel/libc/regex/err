@@ -1,94 +1,55 @@
+cc1: warning: command line option ‘-Wno-pmf-conversions’ is valid for C++/ObjC++ but not for C
+In file included from regex.h:4:0,
+                 from regex_main.c:2:
+reparse.h:67:21: warning: ‘struct lexer’ declared inside parameter list
+ int yyparse (struct lexer *lex);
+                     ^
+reparse.h:67:21: warning: its scope is only this definition or declaration, which is probably not what you want
 regex_main.c: In function ‘main’:
-regex_main.c:18:15: warning: initialization makes pointer from integer without a cast
-   Node *ast = yyparse(&lex);
+regex_main.c:274:15: warning: passing argument 1 of ‘yyparse’ from incompatible pointer type
+   if (yyparse(&lex)) {
                ^
-regex.c:81:59: error: unknown type name ‘lexer’
- int regex_state_surragate(YYSTYPE *lvalp, YYLTYPE *llocp, lexer *l) {
-                                                           ^
-regex.c:91:59: error: unknown type name ‘lexer’
- int regex_state_backslash(YYSTYPE *lvalp, YYLTYPE *llocp, lexer *l) {
-                                                           ^
-regex.c:170:50: error: unknown type name ‘lexer’
- int regex_state0(YYSTYPE *lvalp, YYLTYPE *llocp, lexer *l) {
-                                                  ^
-regex.c:227:49: error: unknown type name ‘lexer’
- int regex_yylex(YYSTYPE *lvalp, YYLTYPE *llocp, lexer *l) {
-                                                 ^
-regex.c:326:21: error: unknown type name ‘lexer’
- void _re_init_lexer(lexer *lex, unsigned char *buf, int size) {
+In file included from regex.h:4:0,
+                 from regex_main.c:2:
+reparse.h:67:5: note: expected ‘struct lexer *’ but argument is of type ‘struct lexer *’
+ int yyparse (struct lexer *lex);
+     ^
+regex_main.c: At top level:
+cc1: warning: unrecognized command line option "-Wno-incompatible-pointer-types"
+cc1: warning: unrecognized command line option "-Wno-int-conversion"
+cc1: warning: command line option ‘-Wno-pmf-conversions’ is valid for C++/ObjC++ but not for C
+In file included from regex.h:4:0,
+                 from regex.c:6:
+reparse.h:67:21: warning: ‘struct lexer’ declared inside parameter list
+ int yyparse (struct lexer *lex);
                      ^
-regex.c: In function ‘main’:
-regex.c:339:3: error: unknown type name ‘lexer’
-   lexer l = {
-   ^
-regex.c:340:7: warning: initialization makes integer from pointer without a cast
-       re,
-       ^
-regex.c:340:7: warning: (near initialization for ‘l’)
-regex.c:341:7: warning: excess elements in scalar initializer
-       0,
-       ^
-regex.c:341:7: warning: (near initialization for ‘l’)
-regex.c:342:7: warning: excess elements in scalar initializer
-       strlen(re),
-       ^
-regex.c:342:7: warning: (near initialization for ‘l’)
-regex.c:343:7: warning: excess elements in scalar initializer
-       0,
-       ^
-regex.c:343:7: warning: (near initialization for ‘l’)
-regex.c:344:7: warning: excess elements in scalar initializer
-       0,
-       ^
-regex.c:344:7: warning: (near initialization for ‘l’)
-regex.c:346:3: warning: excess elements in scalar initializer
-   };
-   ^
-regex.c:346:3: warning: (near initialization for ‘l’)
+reparse.h:67:21: warning: its scope is only this definition or declaration, which is probably not what you want
+cc1: warning: unrecognized command line option "-Wno-incompatible-pointer-types"
+cc1: warning: unrecognized command line option "-Wno-int-conversion"
+cc1: warning: command line option ‘-Wno-pmf-conversions’ is valid for C++/ObjC++ but not for C
+regex.y:17:0: warning: "REGEX_INTERN" redefined
+ #define REGEX_INTERN
+ ^
+<command-line>:0:0: note: this is the location of the previous definition
 regex.y: In function ‘yyparse’:
-regex.y:38:14: warning: assignment makes integer from pointer without a cast
+regex.y:42:33: warning: passing argument 2 of ‘_re_make_node’ makes integer from pointer without a cast
  cp : ASCII        {$$ = node(NCHARACTER, $1, "");}
-              ^
-regex.y:39:14: warning: assignment makes integer from pointer without a cast
+                                 ^
+regex.y:22:21: note: expected ‘int’ but argument is of type ‘void *’
+ extern struct Node *_re_make_node(int type, int value, unsigned char *fmt, ...);
+                     ^
+regex.y:43:33: warning: passing argument 2 of ‘_re_make_node’ makes integer from pointer without a cast
     | UNICODE_BYTE {$$ = node(NCHARACTER, $1, "");}
-              ^
-regex.y:41:29: warning: passing argument 2 of ‘node’ makes integer from pointer without a cast
- csetlist   : cp        {$$ = node(NCLASS, "n", $1);}
+                                 ^
+regex.y:22:21: note: expected ‘int’ but argument is of type ‘void *’
+ extern struct Node *_re_make_node(int type, int value, unsigned char *fmt, ...);
+                     ^
+regex.y:45:29: warning: passing argument 2 of ‘_re_make_node’ makes integer from pointer without a cast
+ csetlist   : cp           {$$ = node(NCLASS, "nnn", $1, $1, $1);}
                              ^
-regex.y:21:21: note: expected ‘int’ but argument is of type ‘char *’
- extern struct Node *node(int type, int value, unsigned char *fmt, ...);
+regex.y:22:21: note: expected ‘int’ but argument is of type ‘char *’
+ extern struct Node *_re_make_node(int type, int value, unsigned char *fmt, ...);
                      ^
-regex.y:41:34: warning: passing argument 3 of ‘node’ makes pointer from integer without a cast
- csetlist   : cp        {$$ = node(NCLASS, "n", $1);}
-                                  ^
-regex.y:21:21: note: expected ‘unsigned char *’ but argument is of type ‘int’
- extern struct Node *node(int type, int value, unsigned char *fmt, ...);
-                     ^
-regex.y:41:14: warning: assignment makes integer from pointer without a cast
- csetlist   : cp        {$$ = node(NCLASS, "n", $1);}
-              ^
-regex.y:42:41: warning: passing argument 1 of ‘node_append’ makes pointer from integer without a cast
-            | cset cp   {$$ = $1; node_append($1, $2);}
-                                         ^
-regex.y:20:13: note: expected ‘struct Node *’ but argument is of type ‘int’
- extern void node_append(struct Node *node, struct Node *child);
-             ^
-regex.y:42:54: warning: passing argument 2 of ‘node_append’ makes pointer from integer without a cast
-            | cset cp   {$$ = $1; node_append($1, $2);}
-                                                      ^
-regex.y:20:13: note: expected ‘struct Node *’ but argument is of type ‘int’
- extern void node_append(struct Node *node, struct Node *child);
-             ^
-regex.y:45:14: warning: assignment makes integer from pointer without a cast
-            | '[' '^' csetlist ']' {$$ = node(NNEGATE, 0, "n", $1);}
-              ^
-regex.y:48:15: warning: assignment makes integer from pointer without a cast
-         | '*'      { $$ = node(KREPEAT0, 0, ""); }
-               ^
-regex.y:49:15: warning: assignment makes integer from pointer without a cast
-         | '+'      { $$ = node(KREPEAT1, 0, ""); }
-               ^
-regex.y:50:22: error: ‘KANY’ undeclared (first use in this function)
-         | '.'      { $$ = node(KANY, 0, "");     }
-                      ^
-regex.y:50:22: note: each undeclared identifier is reported only once for each function it appears in
+regex.y: At top level:
+cc1: warning: unrecognized command line option "-Wno-incompatible-pointer-types"
+cc1: warning: unrecognized command line option "-Wno-int-conversion"
