@@ -11,7 +11,7 @@
 typedef struct FSFile {
   struct FSFile *next, *prev;
   
-  int inode;
+  int inode, closed;
   unsigned char *name;
   unsigned char *path;
   Lock lock;
@@ -26,6 +26,9 @@ typedef struct FSFile {
   
   //internel file descriptor
   intptr_t internalfd;
+  
+  int errno;
+  unsigned char errmsg[512];
 } FSFile;
 
 #define _FILE_MAGIC 235433413
@@ -40,5 +43,7 @@ int read(int fd, void *buf, unsigned int bytes);
 int write(int fd, void *buf, unsigned int bytes);
 int flush(int fd);
 int pipe(int fds[2]);
+int open(const unsigned char *path, int modeflags);
+int close(int fd);
 
 #endif /* _FS_FILE_H */

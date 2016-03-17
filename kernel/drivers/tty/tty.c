@@ -13,13 +13,25 @@
 #if !defined(__i386__)
 #error "This tutorial needs to be compiled with a ix86-elf compiler"
 #endif
- 
+
 #include "../../libc/string.h"
 #include "../../io.h"
 #include "tty.h"
 #include "../../task/lock.h"
 #include "../../task/critical_section.h"
 
+#if 0
+  #ifdef klock_lock
+  #undef klock_lock
+  #endif
+  
+  #ifdef klock_unlock
+  #undef klock_unlock
+  #endif
+  
+  #define klock_lock(lock)
+  #define klock_unlock(lock)
+#endif
 
 static Lock tty_lock = LOCK_INIT;
 //static CriticalSection tty_lock = {0,};
@@ -195,7 +207,16 @@ void terminal_putchar(unsigned char c) {
     terminal_buffer_flip();
   }
   
-  if (c == '\n') {
+  if (c == 7) { //backspace
+    if (terminal_column == 0) {
+      terminal_column = VGA_WIDTH-1;
+      terminal_row = (terminal_row + VGA_HEIGHT - 1) % VGA_HEIGHT;
+    } else {
+      terminal_column--;
+    }
+    
+    terminal_putentryat(' ', COLOR_DEFAULT, terminal_column, terminal_row);
+  } else if (c == '\n') {
     terminal_column = 0;
     if (++terminal_row == VGA_HEIGHT) {
       terminal_rowpush();
@@ -271,7 +292,9 @@ int terminal_set_cursor(int x, int y) {
 }
 
 int terminal_reset_cursor() {
-  terminal_set_cursor(terminal_column, terminal_row);
+  unsigned int toff = terminal_row_off % VGA_HEIGHT;
+  
+  terminal_set_cursor(terminal_column, (terminal_row + VGA_HEIGHT - toff) % VGA_HEIGHT);
   return 0;
 }
 

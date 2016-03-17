@@ -13,7 +13,7 @@ align 8
 %define MAX_TASKS 32
 
 %define GDT_SIZE 5 ;number of gdt entries
-%define PROCESS_SIZE 400 ;number of Process struct
+%define PROCESS_SIZE 408 ;number of Process struct
 %define TASK_SIZE 56 ;size of Task struct
 
 %define DWSIZE 4

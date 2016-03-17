@@ -3,16 +3,39 @@
 from glob import *
 import os.path, os
 
+def filter(srcs, remove_list):
+  srcs2 = []
+
+  for f in srcs:
+    if f not in remove_list:
+      srcs2.append(f)
+  
+  return srcs2
+
 kbuild_sources = glob("kernel/*.c")
 kbuild_sources += glob("kernel/drivers/tty/*.c")
 kbuild_sources += glob("kernel/drivers/pci/*.c")
 kbuild_sources += glob("kernel/drivers/blockdevice/*.c")
 kbuild_sources += glob("kernel/drivers/ext2/*.c")
 kbuild_sources += glob("kernel/drivers/fs/*.c")
+kbuild_sources += glob("kernel/loader/*.c")
 kbuild_sources += glob("kernel/drivers/keyboard/*.c")
 kbuild_sources += glob("kernel/libc/*.c")
 kbuild_sources += glob("kernel/task/*.c")
 kbuild_sources += glob("kernel/process/*.c")
+
+libc_sources = [
+  "kernel/libc/libc.c",
+  "kernel/libc/crt0.c",
+  "kernel/libc/fprintf.c"
+];
+
+kbuild_sources = filter(kbuild_sources, [
+  "kernel/libc/crt0.c"
+]);
+
+#for f in kbuild_sources:
+#  print(f)
 
 def shglob(path):
   out = " "
@@ -27,15 +50,17 @@ def linktargets(srcs):
     f = os.path.split(f)[1]
     out += "build/" + f.replace(".c", ".o") + " "
   return out
-
+  
 CC = os.environ["TARGET"] + "-gcc"
 LD = os.environ["TARGET"] + "-ld"
 AR = os.environ["TARGET"] + "-ar"
 
 LINK_FLAGS = "-fno-asynchronous-unwind-tables -funsigned-char -ffreestanding -O2 -nostdlib  -lgcc"
-CFLAGS = "-fno-asynchronous-unwind-tables "
-CFLAGS += "-ffreestanding -O2 -Wall -Wextra -std=gnu99 "
-CFLAGS += "-funsigned-char  -Wno-pointer-sign -Wno-unused-function -Wno-unused-parameter "
+
+CFLAGS="-g -fno-omit-frame-pointer -Wpadded -Wredundant-decls"
+CFLAGS += " -fno-strict-aliasing -c -funsigned-char"
+CFLAGS += " -ffreestanding -O2 -Wall -Wextra -std=gnu99 -funsigned-char  -Wno-pointer-sign "
+CFLAGS += " -Wno-unused-function -Wno-unused-parameter"
 
 class OrderedDict (object):
   def __init__(self, dict=None):
@@ -83,23 +108,17 @@ class OrderedDict (object):
       for l in self.l:
         yield l
     return iter()
-    
+
+#if not os.path.exists("_tinyext2_fs.c"):
+#  pass
+
 targets = OrderedDict([
   #ensure kernel gets blank copy of crt0.o
-  "tinyfs1.custom", [
-    "python datatoc.py tinyext2.fs _tinyext2_fs _tinyext2_fs.c"
-  ],
-  "tinyfs2.custom", [
-    CC + " -c _tinyext2_fs.c -ffreestanding -lgcc"
-  ],
   "crt01.custom", [
     CC + " " + CFLAGS +  " -D__KERNEL_BUILD__ -c kernel/libc/crt0.c -o build/crt0.o", 
   ],
   "core_x86.o"  ,  ["kernel/core_x86.nasm"],
   "main_sources" ,   kbuild_sources,
-  "kernel.bin.custom", [
-    CC + " " + LINK_FLAGS + " -T linker.ld -o build/kernel.bin build/core_x86.o " + linktargets(kbuild_sources)
-  ],
   "crt0.custom", [
     CC + " " + CFLAGS +  " -c kernel/libc/crt0.c -o build/crt0.o", 
   ],
@@ -115,7 +134,19 @@ targets = OrderedDict([
   ],
   "appfiles.custom", [
     #CC + " -Iinstall/usr/include -c " + shglob("apps/*.c") + " -ffreestanding -funsigned-char -fPIC"
-    CC + " -Iinstall/usr/include apps/ls.c -o build/ls -ffreestanding -funsigned-char -fPIC -lgcc -L install/usr/lib"
+    CC + " -Iinstall/usr/include apps/ls.c -std=c99 -o install/bin/ls -ffreestanding -funsigned-char -fPIC -lgcc -L install/usr/lib"
+  ],
+  "grub.iso.custom" , [
+    "sh package-tinyext2.sh"
+  ],
+  "tinyfs1.custom", [
+    "python datatoc.py tinyext2.fs _tinyext2_fs _tinyext2_fs.c"
+  ],
+  "tinyfs2.custom", [
+    CC + " -c _tinyext2_fs.c -ffreestanding -lgcc"
+  ],
+  "kernel.bin.custom", [
+    CC + " " + LINK_FLAGS + " -T linker.ld -o build/kernel.bin build/core_x86.o " + linktargets(kbuild_sources)
   ],
   "grub.iso.custom" , [
     "sh make-grub-iso.sh"

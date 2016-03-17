@@ -314,6 +314,32 @@ int _kfree(void *vmem, char *file, int line) {
   return 1;
 }
 
+void *_krealloc(void *memory, size_t newsize, char *file, int line) {
+  if (!memory) {
+    return _kmalloc(newsize, file, line);
+  }
+  
+  //ksection_lock(&kmalloc_lock);
+  int bad = _ktestmem(memory);
+  
+  if (bad) {
+    //ksection_unlock(&kmalloc_lock);
+    return NULL;
+  }
+  
+  MemNode *node = memory;
+  node--;
+  
+  int cpylen = node->size < newsize ? node->size : newsize;
+
+  void *newmem = kmalloc(newsize);
+  memcpy(newmem, memory, cpylen);
+  _kfree(memory, file, line);
+
+  //ksection_unlock(&kmalloc_lock);
+  return newmem;
+}
+
 static void _kprintf_block(MemNode *node, int indent) {
   unsigned char buf[64];
   

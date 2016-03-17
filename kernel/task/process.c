@@ -9,6 +9,8 @@
 #include "../libc/string.h"
 #include "../libc/kmalloc.h"
 #include "../libc/list.h"
+#include "../libc/stdio.h"
+
 #include "../drivers/keyboard/keyboard.h"
 #include "../drivers/tty/tty.h"
 #include "../drivers/fs/memfile.h"
@@ -288,9 +290,56 @@ int process_close(Process *process) {
   return 0;
 }
 
+int print_procs(FILE *file) {
+  krwlock_rlock(&plock);
+  unsigned char **lines = NULL;
+  int totline = 0, totused=0;
+  
+  for (Process *proc = running_processes.first; proc; proc=proc->next) {
+    if (totline >= totused) {
+      totused = (totused + 1)*2;
+      lines = krealloc(lines, totused*sizeof(void*));
+    }
+    
+    unsigned char *buf = kmalloc(256);
+    strcpy(buf, proc->name);
+    buf[255] = 0;
+    
+    lines[totline++] = buf;
+  }
+  krwlock_unrlock(&plock);
+  
+  fprintf(file, "=========Running processes============\n");
+  for (int i=0; i<totline; i++) {
+    fprintf(file, "\t%s\n", lines[i]);
+    kfree(lines[i]);
+  }
+  fprintf(file, "\n");
+  
+  kfree(lines);
+  
+  return 0;
+}
+
 int process_wait(Process *process) {
   while (process->state & PROC_RUNNING) {
   }
   
+  return 0;
+}
+
+int wait(int *stat_loc) {
+  return 0;
+}
+
+int waitpid(int pid, int *stat_loc, int options) {
+  return 0;
+}
+
+FILE *popen(const char *command, const char *mode) {
+  return NULL;
+}
+
+int exit(int retval) {
   return 0;
 }

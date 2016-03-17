@@ -10,6 +10,10 @@ short getchar_nowait();
 
 void libk_initialize();
 
-int kprintf(char *args,...);
+int kprintf(char *fmt,...);
+int e9printf(char *fmt, ...);
+
+#define klogf e9printf
+//int klogf(char *fmt,...);
 
 #endif /* _LIBK_H */

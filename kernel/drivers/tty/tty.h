@@ -41,7 +41,7 @@ int terminal_move_cursor(int delta);
 int terminal_get_cursor();
 int terminal_set_cursor(int x, int y);
 
-#define DEBUG_KEY  2
+#define DEBUG_KEY  5
 void terminal_set_debug(unsigned int channel, unsigned int chr, unsigned int clr);
 
 //outputs in hex

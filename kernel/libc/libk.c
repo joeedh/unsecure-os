@@ -16,13 +16,6 @@
 
 volatile unsigned int k_debug;
 
-size_t strlen(const unsigned char* str) {
-	size_t ret = 0;
-	while ( str[ret] != 0 )
-		ret++;
-	return ret;
-}
-
 int kputint(int n) {
   static unsigned char buf[32];
   int i = 0, n2 = n;

@@ -33,7 +33,54 @@ static unsigned char *my_strtrim(const unsigned char *str, unsigned char *trimch
   return c;
 }
 
-int normpath(unsigned char *path) {
+int normpath(unsigned char *path, size_t buffersize) {
+  unsigned char buf[255];
+  
+  //strcpy(buf, strtrim(path));
+  strcpy(buf, path);
+  
+  buf[254] = 0;
+  
+  int len = strlen(buf);
+  int j = 0;
+  
+  for (int i=0; i<len; i++) {
+    unsigned char c = buf[i];
+    unsigned char n = buf[(i < len-1 ? i+1 : i)];
+    unsigned int found = 0;
+    
+    path[j++] = c;
+    
+    while (i < len-1 && c == n && my_strhas(c, " \t\r\n\v/")) {
+      c = buf[i], n = buf[i+1];
+      found = 1;
+      i++;
+    }
+    
+    if (found)
+      i--;
+  }
+  
+  path[j] = 0;
+  len = j, j = 0;
+  
+  strcpy(buf, strtrim(path));
+  strcpy(path, buf);
+  len = strlen(path);
+  
+  if (path[0] != '/') {
+    buf[j++] = '/';
+  }
+  for (int i=0; i<len; i++) {
+    if (i > 0 && i == len-1 && path[i] == '/') {
+      break;
+    }
+    buf[j++] = path[i];
+  }
+  buf[j] = 0;
+  
+  strcpy(path, strtrim(buf));
+  
   return 0;
 /*
   if (!path) {

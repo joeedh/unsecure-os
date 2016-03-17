@@ -6,9 +6,10 @@ def cp_handler(file, target):
   else:
     return "cp %s %s" % (file, target)
 
-CFLAGS = "-D__KERNEL_BUILD__ -fno-asynchronous-unwind-tables "
-CFLAGS += "-ffreestanding -O2 -Wall -Wextra -std=gnu99 "
-CFLAGS += "-funsigned-char  -Wno-pointer-sign -Wno-unused-function -Wno-unused-parameter "
+CFLAGS="-g -fno-omit-frame-pointer -Wpadded -Wredundant-decls"
+CFLAGS += " -fno-strict-aliasing -D__KERNEL_BUILD__  -c -funsigned-char"
+CFLAGS += " -ffreestanding -O2 -Wall -Wextra -std=gnu99 -funsigned-char  -Wno-pointer-sign "
+CFLAGS += " -Wno-unused-function -Wno-unused-parameter"
 
 def cc_handler(file, target):
   if target.strip().lower().endswith(".c"):
@@ -44,13 +45,13 @@ class Handler (object):
     return path
     
 handlers = {
-  r'.*\.c\b'    : Handler(cc_handler, can_popen=True, ext=[".c", ".o"]),
+  r'.*\.c\b'    : Handler(cc_handler, can_popen=False, ext=[".c", ".o"]),
   r'.*\.html\b' : Handler(cp_handler, can_popen=False),
   r'.*\.png\b'  : Handler(cp_handler, can_popen=False),
   r'.*\.txt\b'    : Handler(cp_handler, can_popen=False),
-  r'.*\.nasm\b'   : Handler(nasm_handler, can_popen=True, ext=[".nasm", ".o"]),
+  r'.*\.nasm\b'   : Handler(nasm_handler, can_popen=False, ext=[".nasm", ".o"]),
   #r'.*\.ld\b'     : Handler(ld_handler, can_popen=True, ext=[".ld", ".bin"]),
-  r'.*\.custom\b'    : Handler(custom_handler, can_popen=True, nocheck=True)
+  r'.*\.custom\b'    : Handler(custom_handler, can_popen=False, nocheck=True)
 }
 
 #transform_ext
@@ -489,10 +490,13 @@ def safe_stat(path, nocheck=False):
   if nocheck:
     return 0
     
-  try:
-    return os.stat(path).st_mtime
-  except FileNotFoundError:
-    return 0
+  if not os.path.exists(path):
+    return -1
+    
+  #try:
+  return os.stat(path).st_mtime
+  #except FileNotFoundError:
+  #  return 0
   #except OSError:
   #  return random()*(1<<22)
   #except IOError:
@@ -663,7 +667,7 @@ def build_target(files):
     cmd = None
     
     if nocheck1:
-        h = get_handler(".custom")
+      h = get_handler(".custom")
     else:
       h = get_handler(f)
       
@@ -715,14 +719,14 @@ def build_target(files):
       else:
         cmd = cmd.replace("\\", "\\\\")
       
-      print(cmd);
+      #print(" - "+fname) #cmd);
       
       cmdlist = shlex.split(cmd)
       #cmdlist[0] = np(cmdlist[0])
       proc = subprocess.Popen(cmdlist)
       procs.append([proc, f, pathtime])
     else:
-      print(cmd)
+      #print(" - "+fname) #cmd);
       ret = os.system(cmd)
       
       if failed_ret(ret):
@@ -739,18 +743,25 @@ def build_target(files):
         ret = p[0].returncode
         if failed_ret(ret): #ret in [-1, 65280]:
           failed_files.append(p[1])
+          
     procs = newprocs
     time.sleep(0.75)
     
   if len(failed_files) > 0:
-    print("build failure\n\n")
+    print("build failure %s\n\n" % ([f[1] for f in built_files]))
+    #built2 = built_files[:]
+    
     for f in failed_files:
       for i, f2 in enumerate(built_files):
-        if f2[2] == f: break
-      
-      built_files.pop(i)
+        if f2[2] == f:
+          built_files.pop(i)
+          break
 
     for pathtime in built_files:
+      if pathtime[0] in db:
+        print("saving", db[pathtime[0]], pathtime[1])
+      else:
+        print("saving", pathtime[1]);
       db[pathtime[0]] = pathtime[1]
     
     close_db(db)
@@ -760,11 +771,30 @@ def build_target(files):
       sys.exit(-1)
     else:
       return 0
-        
+  
+  badset = set()
+  
+  #figure out which dependencies with time updates to save
+  for k in db_depend:
+    bad = 0
+    for f in failed_files:
+      if k == failed_files[2]:
+        bad = 1
+        break
+    if not bad:
+      continue
+    
+    for path in db_depend[k]:
+      badset.add(path)
+      
+  for k in db_depend:
+    for path in db_depend[k]:
+      if path in badset or not os.path.exists(path): continue
+      db[path] = safe_stat(path)
+      
   for pathtime in built_files:
     if pathtime[0] in db:
       print("saving", db[pathtime[0]], pathtime[1])
-    
     db[pathtime[0]] = pathtime[1]
   
   close_db(db)
@@ -772,7 +802,6 @@ def build_target(files):
   
   #write aggregate, minified file
   if build_final:
-    pass
     sys.stdout.flush()
     
   if build_cmd != "loop":
@@ -858,6 +887,18 @@ def buildall():
   except KeyboardInterrupt:
     pass
     signal_handler(None, None)
+    
+def save_depend_times():
+  db = open_db("kbuild.db")
+  db_depend = open_db("kbuild_dependencies.db")
+  
+  for k in db_depend:
+    for path in db_depend[k]:
+      if os.path.exists(path):
+        db[path] = safe_stat(path)
+      
+  close_db(db_depend)
+  close_db(db)
 
 def buildall_intern():
   for t in targets:
@@ -874,20 +915,10 @@ def buildall_intern():
   for t in targets:
     build_final |= build_target(t)
   
-
-  db = open_db("kbuild.db")
-  db_depend = open_db("kbuild_dependencies.db")
   
-  for k in db_depend:
-    for path in db_depend[k]:
-      if os.path.exists(path):
-        db[path] = safe_stat(path)
-      
-  close_db(db_depend)
-  close_db(db)
+  save_depend_times()
   
   build_final |= do_copy_targets()
-  
   if build_final:
     pass
   

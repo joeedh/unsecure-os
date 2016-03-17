@@ -1,7 +1,25 @@
 #ifndef __KERNEL_BUILD__
+#include "stdio.h"
+
 extern int main(int argc, char **argv);
 
-void _start() {
-  main(0, 0);
+unsigned char **env;
+
+FILE *stdin, *stdout, *stderr;
+FILE _stdin, _stdout, _stderr;
+
+int _start(int sin, int sout, int serr, char **argv, char **envv) {
+  stdin = &_stdin;
+  stdout = &_stdout;
+  stderr = &_stderr;
+  
+  stdin->fd = sin, stdout->fd = sout, stderr->fd = serr;
+  
+  int argc = 0;
+  while (argv[argc]) {
+    argc++;
+  }
+  
+  return main(argc, argv);
 }
 #endif

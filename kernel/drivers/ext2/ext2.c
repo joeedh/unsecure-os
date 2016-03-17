@@ -9,6 +9,7 @@
 #include "../../libc/libk.h"
 #include "../../libc/kmalloc.h"
 #include "../../libc/stdio.h"
+#include "../../libc/list.h"
 
 #define EXT2_DEBUG  0
 
@@ -143,7 +144,6 @@ typedef struct INode {
   uint32_t mtime;
   uint32_t dtime; //deletion time
   
-  
   uint16_t groupid;
   uint16_t hardlinks;
   
@@ -202,6 +202,8 @@ enum { //inode flags
   INODE_JOURNAL_FILE_DATA = (1<<18)
 };
 
+struct ext2fs_file;
+
 typedef struct ext2fs {
     FSInterface head;
     SuperBlock superblock;
@@ -214,7 +216,16 @@ typedef struct ext2fs {
     size_t blocksize;
     
     int error;
+    struct ext2fs_file **open_files;
+    int totopen, totalloc, idgen;
 } ext2fs;
+
+typedef struct ext2fs_file {
+  struct ext2fs_file *next, *prev;
+  INode inode;
+  int inode_nr;
+  int id;
+} ext2fs_file;
 
 typedef struct DirEntry {
   uint32_t inode;
@@ -222,6 +233,13 @@ typedef struct DirEntry {
   uint8_t namesize_lower;
   uint8_t typebits;
 } DirEntry;
+
+#define PACK_FILEFD (idx, id) ((idx) | ((id)<<16))
+#define UNPACK_FILEFD_ID(fd) ((fd)>>16)
+#define UNPACK_FILEFD_IDX(fd) ((fd) & ((1<<16)-1))
+
+
+int ext2_path_to_inode(void *vself, BlockDeviceIF *device, const char *utf8path, int utf8path_size);
 
 size_t ext2fs_readmeta(BlockDeviceIF *device, ext2fs *efs) {
   //if (efs->last_device == device && !efs->readmeta)
@@ -355,6 +373,25 @@ static size_t get_inode_block(INode *inode, BlockDeviceIF *device, ext2fs *efs, 
   }
 }
 
+static int read_inode(ext2fs *efs, BlockDeviceIF *device, int inode, INode *out) {
+  if (inode <= 0) {
+    return -1;
+  }
+  
+  size_t block, local;
+  size_t ioff = find_inode(device, inode, efs, &block, &local);
+  
+  if (ioff == 0) {
+    return -1;
+  }
+  
+  if (!device->read(device, ioff, sizeof(INode), out)) {
+    return -1;
+  }
+  
+  return 0;
+}
+
 static size_t read_inode_contents(BlockDeviceIF *device, ext2fs *efs, 
                                   int theinode, int fileoff, unsigned char *buf, int size) 
 {
@@ -365,7 +402,8 @@ static size_t read_inode_contents(BlockDeviceIF *device, ext2fs *efs,
 
   if (efs->superblock.inodes_per_group == 0 || blocksize == 0) {
     efs->error = 1;
-    return 0; //eek!
+    _fs_error(efs, -1, "Corrupted superblock");
+    return -1; //eek!
   }
   
   size_t ioff = find_inode(device, theinode, efs, &block, &local);
@@ -404,6 +442,95 @@ static size_t read_inode_contents(BlockDeviceIF *device, ext2fs *efs,
   }
   return c;
 }
+
+static ext2fs_file *file_from_internalfd(ext2fs *efs, int fd, int *index_out);
+
+int ext2_openfile(void *vself, BlockDeviceIF *device, const char *utf8path, int utf8path_size, int oflag) {
+  ext2fs *self = vself;
+  int inode_nr = ext2_path_to_inode(self, device, utf8path, utf8path_size);
+  
+  if (inode_nr <= 0) {
+    return -1;
+  }
+  
+  INode inode;
+  if (read_inode(self, device, inode_nr, &inode) < 0) {
+    return -1;
+  }
+  
+  if (inode.type & TYPE_DIRECTORY) {
+    return -1;
+  }
+  
+  if (self->totalloc <= self->totopen) {
+    self->totalloc = (self->totalloc + 1) * 2;
+    self->open_files = krealloc(self->open_files, self->totalloc*sizeof(void*));
+  }
+  
+  ext2fs_file *file = kmalloc(sizeof(ext2fs_file));
+  if (!file)
+    return -1;
+  memset(file, 0, sizeof(*file));
+  
+  file->id = self->idgen;
+  //self->idgen = (self->idgen+1) % 65535;
+  
+  file->inode = inode;
+  file->inode_nr = inode_nr;
+  
+  int fd = file->id;
+  
+  self->open_files[self->totopen++] = file;
+  
+  return fd;
+}
+
+static int ext2_closefile(void *vself, BlockDeviceIF *device, int internalfd) {
+  ext2fs *self = vself;
+  int i;
+  
+  ext2fs_file *file = file_from_internalfd(self, internalfd, &i);
+  if (!file) {
+    return -1;
+  }
+  
+  kfree(file);
+  
+  for (; i<self->totopen-1; i++) {
+    self->open_files[i] = self->open_files[i+1];
+  }
+  
+  self->totopen--;
+  return 0;
+}
+
+static int ext2_preadfile(void *vself, BlockDeviceIF *device, int filefd, const char *buf, 
+                         size_t bufsize, size_t fileoff)
+{
+  ext2fs *self = vself;
+  
+  ext2fs_file *file = file_from_internalfd(self, filefd, NULL);
+  
+  if (!file) {
+    _fs_error(self, -1, "Bad internal fd descriptor");
+    return -1;
+  }
+  
+  return (int) read_inode_contents(device, self, file->inode_nr, fileoff, (unsigned char*)buf, bufsize);
+}
+
+static ext2fs_file *file_from_internalfd(ext2fs *efs, int fd, int *index_out) {
+  for (int i=0; i<efs->totopen; i++) {
+    if (efs->open_files[i]->id == fd) {
+      if (index_out)
+        *index_out = i;
+      return efs->open_files[i];
+    }
+  }
+  
+  return NULL;
+}
+
 
 //returns number of entries
 static size_t foreach_direntry(ext2fs *self, BlockDeviceIF *device, int dir_inode,
@@ -745,5 +872,11 @@ FSInterface *kext2fs_create(BlockDeviceIF *device) {
   fs->head.readdir = ext2_readdir;
   fs->head.path_to_inode = ext2_path_to_inode;
 
+  fs->head.open = ext2_openfile;
+  fs->head.close = ext2_closefile;
+  fs->head.pread = ext2_preadfile;
+  
+  fs->idgen = 1;
+  
   return (FSInterface*) fs;
 }

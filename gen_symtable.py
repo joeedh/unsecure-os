@@ -4,7 +4,7 @@ import subprocess;
 
 file = open("kernel.bin.symbols", "w")
 
-ret = subprocess.call(["nm", "-v", "-t", "d", "-e", "kernel.bin"], stdout=file)
+ret = subprocess.call(["nm", "-v", "-t", "d", "-e", "build/kernel.bin"], stdout=file)
 file.close()
 
 file = open("kernel.bin.symbols", "r")

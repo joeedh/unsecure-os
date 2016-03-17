@@ -32,6 +32,7 @@ typedef struct Process {
   List memory; //list of MemNode references
   List open_files;
   List threads;
+  List childprocs;
   
   volatile int flags, state;
   volatile int retval, used;
@@ -56,5 +57,9 @@ int process_set_finish(Process *process, void *finishfunc);
 int process_wait(Process *process);
 int process_close(Process *process);
 
+struct FILE;
+int print_procs(struct FILE *file);
+
+int exit(int retval);
 
 #endif /* _KPROCESS_H */

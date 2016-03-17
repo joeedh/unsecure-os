@@ -113,7 +113,12 @@ typedef struct FSInterface {
   int (*chuser)(void *self, BlockDeviceIF *device, int inode, int userid);
   int (*chgroup)(void *self, BlockDeviceIF *device, int inode, int groupid);
   
+  unsigned char lasterror_message[512];
+  int lasterror;
   Lock lock;
 } FSInterface;
+
+//note: does NOT lock fsinterface!!
+void _fs_error(void *fsinterface, int code, unsigned char *error);
 
 #endif /* _FS_INTERFACE_H */

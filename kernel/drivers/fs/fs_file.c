@@ -15,13 +15,17 @@
 #include "../../task/task.h"
 #include "../../task/lock.h"
 #include "../../timer.h"
+#include "../../libc/path.h"
 
 #include "dirent.h"
+
+extern FSInterface *rootfs;
+extern BlockDeviceIF *rootdevice;
 
 static List open_files;
 
 int bad_fsdev(FSInterface *fs, BlockDeviceIF *device) {
-  return fs->magic != FSINTERFACE_MAGIC || device->magic != BLOCKDEVICE_MAGIC;
+  return !fs || fs->magic != FSINTERFACE_MAGIC || (device && device->magic != BLOCKDEVICE_MAGIC);
 }
 
 void filesystem_initialize() {
@@ -36,11 +40,19 @@ void _fs_fsinterface_init(FSInterface *fs) {
 static void _set_error(int err, const char *message) {
 }
 
+void _fs_error(void *fsinterface, int code, unsigned char *error) {
+  FSInterface *fs = fsinterface;
+
+  fs->lasterror = code;
+  strncpy(fs->lasterror_message, error, sizeof(fs->lasterror_message)-1);
+}
+
 void _fs_file_init(FSFile *file) {
   memset(file, 0, sizeof(*file));
   
   klock_init(&file->lock);
   file->magic = _FILE_MAGIC;
+  file->closed = 0;
 }
 
 int _valid_file(int fd) {
@@ -52,36 +64,75 @@ int _valid_file(int fd) {
   if (file->magic != _FILE_MAGIC)
     return 0;
   
-  return bad_fsdev(file->fs, file->device);
+  if (file->closed)
+    return 0;
+  
+  return !bad_fsdev(file->fs, file->device);
+}
+
+static void _lock_file(FSFile *file) {
+  klock_lock(&file->lock);
+  klock_lock(&file->fs->lock);
+  
+  if (file->device) {
+    klock_lock(&file->device->lock);
+  }
+}
+
+static void _unlock_file(FSFile *file) {
+  if (file->device) {
+    klock_unlock(&file->device->lock);
+  }
+  
+  klock_unlock(&file->fs->lock);
+  klock_unlock(&file->lock);
 }
 
 int read(int fd, void *buf, unsigned int bytes) {
-  if (!_valid_file(fd))
-    return 0;
+  if (!_valid_file(fd)) {
+    klogf("Invalid file %x\n", fd);
+    return -1;
+  }
   
   FSFile *file = (FSFile*) fd;
-  klock_lock(&file->lock);
+  _lock_file(file);
   
   int reverse = (!!(file->mode & O_PIPE_MODE)) ^ (!!(file->mode & _O_REVERSE));
   
   if (!(file->access & O_RDONLY) || !(file->fs->accessmode(file->fs, file->device) & O_RDONLY)) {
+    klogf("Permission error: %d\n", file->access);
+    
     _set_error(FILE_PERMISSIONS_ERROR, "Invalid permissions");
-    klock_unlock(&file->lock);
-    return 0;
+    _unlock_file(file);
+    return -1;
   }
   
   if (!file->fs->pread) {
+    klogf("Read not supported by filesystem: %x\n", file->fs->pread);
+    
     _set_error(FILE_TYPE_ERROR, "Read not supported by the filesystem driver");
-    klock_unlock(&file->lock);
-    return 0;
+    _unlock_file(file);
+    return -1;
   }
   
   int ret, *cursor = ((file->mode & O_PIPE_MODE) && reverse) ? &file->pipe_rcursor : &file->cursor;
   
   ret = file->fs->pread(file->fs, file->device, file->internalfd, buf, bytes, *cursor);
+  
+  if (ret < 0) {
+    _unlock_file(file);
+    
+    file->fs->lasterror_message[sizeof(file->fs->lasterror_message)-1] = 0;
+    strncpy(file->errmsg, file->fs->lasterror_message, sizeof(file->errmsg)-1);
+    file->errno = file->fs->lasterror;
+    
+    klogf("Read error:%d: %s\n", file->fs->lasterror, file->fs->lasterror_message);
+    return -1;
+  }
+  
   *cursor += ret;
   
-  //kprintf("cursorr: %d, ret: %d\n", *cursor, ret);
+  //klogf("cursorr: %d, ret: %d\n", *cursor, ret);
   
   if (file->mode & O_PIPE_MODE) {
     stat sdata;
@@ -92,7 +143,8 @@ int read(int fd, void *buf, unsigned int bytes) {
     *cursor = *cursor % size;
   }
   
-  klock_unlock(&file->lock);
+  _unlock_file(file);
+  
   return ret;
 }
 
@@ -102,19 +154,21 @@ int write(int fd, void *buf, unsigned int bytes) {
   
   FSFile *file = (FSFile*) fd;
 
-  klock_lock(&file->lock);
+  _lock_file(file);
   
   int reverse = (!!(file->mode & O_PIPE_MODE)) ^ (!!(file->mode & _O_REVERSE));
   
   if (!(file->access & O_RDONLY) || !(file->fs->accessmode(file->fs, file->device) & O_RDONLY)) {
     _set_error(FILE_PERMISSIONS_ERROR, "Invalid permissions");
-    klock_unlock(&file->lock);
+    
+    _unlock_file(file);
     return -1;
   }
   
   if (!file->fs->pread) {
     _set_error(FILE_TYPE_ERROR, "Read not supported by the filesystem driver");
-    klock_unlock(&file->lock);
+    
+    _unlock_file(file);
     return -1;
   }
   
@@ -136,7 +190,8 @@ int write(int fd, void *buf, unsigned int bytes) {
     }
   }
   
-  klock_unlock(&file->lock);
+  _unlock_file(file);
+    
   return ret;
 }
 
@@ -146,9 +201,9 @@ int flush(int fd) {
   
   FSFile *file = (FSFile*) fd;
 
-  klock_lock(&file->lock);
+  _lock_file(file);
   file->fs->flush(file->fs, file->device, file->internalfd);
-  klock_unlock(&file->lock);
+  _unlock_file(file);
   
   return 0;
 }
@@ -158,6 +213,7 @@ int pipe(int fds[2]) {
   file->mode |= O_PIPE_MODE;
   
   file->pipe_rcursor = 0;
+  file->closed = 0;
   
   FSFile *file2 = kmalloc(sizeof(FSFile));
   *file2 = *file;
@@ -169,13 +225,56 @@ int pipe(int fds[2]) {
   return 0;
 }
 
-extern FSInterface *rootfs;
-extern BlockDeviceIF *rootdevice;
+int open(const unsigned char *path, int modeflags) {
+  unsigned char path2[MAX_PATH];
+  strcpy(path2, path);
+  normpath(path2, sizeof(path2));
+  
+  FSFile *file = kmalloc(sizeof(FSFile));
+  
+  memset(file, 0, sizeof(*file));
+  _fs_file_init(file);
+  
+  file->fs = rootfs;
+  file->device = rootdevice;
+  file->access = modeflags;
+  
+  file->internalfd = file->fs->open(file->fs, file->device, path2, strlen(path2), modeflags);
+  
+  if (file->internalfd < 0) {
+    kfree(file);
+    return -1;
+  }
+  
+  return (int)file;
+}
+
+int close(int fd) {
+  FSFile *file = (FSFile*)fd;
+  
+  if (!_valid_file(fd))
+    return -1;
+  
+  file->closed = 1;
+
+  _lock_file(file);
+  file->fs->close(file->fs, file->device, file->internalfd);
+  _unlock_file(file);
+  
+  return 0;
+}
 
 //static struct {struct dirent item, DIR dir} dirs[32];
 //unsigned int curdir = 0;
 
 DIR *opendir(const unsigned char *path) {
+  if (!path)
+    return NULL;
+  
+  unsigned char path2[MAX_PATH];
+  strcpy(path2, path);
+  normpath(path2, sizeof(path2));
+  
   BlockDeviceIF *device = rootdevice;
   FSInterface *fs = rootfs;
   
@@ -183,14 +282,11 @@ DIR *opendir(const unsigned char *path) {
     kprintf("File system driver corruption!\n");
     return NULL;
   }
-  
-  if (!path)
-    return NULL;
 
   klock_lock(&rootdevice->lock);
   klock_lock(&rootfs->lock);
   
-  int inode = fs->path_to_inode(fs, device, path, strlen(path));
+  int inode = fs->path_to_inode(fs, device, path2, strlen(path2));
   if (inode < 0) {
     klock_unlock(&rootfs->lock);
     klock_unlock(&rootdevice->lock);

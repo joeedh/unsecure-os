@@ -114,7 +114,9 @@ void _isr_handler1() {
     }
     
     if (code != _last_tty_debug_chr) {
-      terminal_set_debug(DEBUG_KEY, code, COLOR_LIGHT_BLUE);
+      //terminal_set_debug(DEBUG_KEY, code, COLOR_LIGHT_BLUE);
+      terminal_set_idebug(DEBUG_KEY, 5, code, COLOR_LIGHT_BLUE);
+      
       _last_tty_debug_chr = code;
     }
     

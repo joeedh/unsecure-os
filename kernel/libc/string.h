@@ -13,7 +13,9 @@ size_t strlen(const unsigned char* str);
 
 //for sake of security, will never return greater than buflen-1
 static inline size_t strnlen(const unsigned char* str, size_t buflen) {
-  for (unsigned int i=0; i<buflen; i++) {
+  unsigned int i;
+  
+  for (i=0; i<buflen; i++) {
     if (!str[i])
       return i;
   }
