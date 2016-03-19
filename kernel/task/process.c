@@ -341,5 +341,6 @@ FILE *popen(const char *command, const char *mode) {
 }
 
 int exit(int retval) {
-  return 0;
+  e9printf("implement me!\n");
+  return 0; //implement me!
 }

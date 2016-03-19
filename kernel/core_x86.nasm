@@ -10,6 +10,8 @@
 section .text
 align 8  
 
+%define TTY_BUFFER_ROWS 900
+
 %define MAX_TASKS 32
 
 %define GDT_SIZE 5 ;number of gdt entries
@@ -163,6 +165,14 @@ global tasks, terminal_buffer
 
 terminal_buffer: align 8
 resb VGA_HEIGHT*VGA_WIDTH*2;
+
+global terminal_history, terminal_linelasts;
+
+terminal_history: align 8;
+resb TTY_BUFFER_ROWS*VGA_WIDTH*2;
+
+terminal_linelasts: align 8;
+resb TTY_BUFFER_ROWS;
 
 tasks: align 8
 resb TASK_SIZE*MAX_TASKS;

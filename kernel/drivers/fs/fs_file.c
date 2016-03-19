@@ -137,9 +137,9 @@ int read(int fd, void *buf, unsigned int bytes) {
   if (file->mode & O_PIPE_MODE) {
     stat sdata;
     
-    file->fs->stat(file->fs, file->device, (int)file, &sdata, NULL);
-    unsigned int size = sdata.st_msize;
+    file->fs->stat(file->fs, file->device, (int)file, &sdata);
     
+    unsigned int size = sdata.st_msize;
     *cursor = *cursor % size;
   }
   
@@ -182,7 +182,7 @@ int write(int fd, void *buf, unsigned int bytes) {
   if (file->mode & O_PIPE_MODE) {
     stat sdata;
     
-    file->fs->stat(file->fs, file->device, (int)file, &sdata, NULL);
+    file->fs->stat(file->fs, file->device, (int)file, &sdata);
     unsigned int size = sdata.st_msize;
     
     if (*cursor != (int)size) {
@@ -233,7 +233,7 @@ int tell(int fd) {
     return -1;
   
   _lock_file(file);
-  int ret = file->fs->tell(file->fs, file->device, file->internalhd);
+  int ret = file->fs->tell(file->fs, file->device, file->internalfd);
   _unlock_file(file);
   
   return ret;
@@ -248,7 +248,7 @@ int fstat(int fd, struct stat *out) {
     return -1;
   
   _lock_file(file);
-  int ret = file->fs->fstat(file->fs, file->device, file->internalhd, out);
+  int ret = file->fs->fstat(file->fs, file->device, file->internalfd, out);
   _unlock_file(file);
   
   return ret;

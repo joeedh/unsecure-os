@@ -1,5 +1,6 @@
 #ifndef __KERNEL_BUILD__
 #include "stdio.h"
+#include "../syscalls/syscalls.h"
 
 extern int main(int argc, char **argv);
 
@@ -7,8 +8,15 @@ unsigned char **env;
 
 FILE *stdin, *stdout, *stderr;
 FILE _stdin, _stdout, _stderr;
+SysCallPtr *syscalls;
 
-int _start(int sin, int sout, int serr, char **argv, char **envv) {
+int _start(SysCallPtr *calltable, int sin, int sout, 
+           int serr, char **argv, char **envv) 
+{
+  syscalls = calltable;
+  
+  env = envv;
+  
   stdin = &_stdin;
   stdout = &_stdout;
   stderr = &_stderr;

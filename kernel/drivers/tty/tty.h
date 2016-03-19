@@ -28,26 +28,29 @@ enum vga_color {
   COLOR_DEFAULT=COLOR_LIGHT_GREY
 };
 
+#define TTY_BUFFER_ROWS 900
+
 void terminal_initialize();
 void terminal_setcolor(uint8_t color);
-void terminal_putentryat(unsigned char c, uint8_t color, size_t x, size_t y);
-void terminal_rowpush();
 void terminal_putchar(unsigned char c);
 void terminal_writestring(const unsigned char* data);
 void terminal_clear();
 void terminal_flush();
 
 int terminal_move_cursor(int delta);
-int terminal_get_cursor();
-int terminal_set_cursor(int x, int y);
+
+//resets hardware cursor to internal x/y cursor
+int terminal_reset_hcursor();
+int terminal_get_hcursor();
+int terminal_set_hcursor(int x, int y);
+void terminal_resetscroll();
+
+int terminal_scroll(int delta);
 
 #define DEBUG_KEY  5
 void terminal_set_debug(unsigned int channel, unsigned int chr, unsigned int clr);
 
 //outputs in hex
 void terminal_set_idebug(int basechannel, int len, int i, int clr);
-
-//resets display cursor to internal x/y cursor
-int terminal_reset_cursor();
 
 #endif /* _TTY_H */

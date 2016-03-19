@@ -11,6 +11,19 @@
 
 size_t strlen(const unsigned char* str);
 
+static inline int memcmp(void *va, void *vb, size_t size) {
+  unsigned char *a = va, *b = vb;
+  
+  for (size_t i=0; i<size; i++, a++, b++) {
+    if (*a > *b)
+      return 1;
+    else if (*a < *b)
+      return -1;
+  }
+  
+  return 0;
+}
+
 //for sake of security, will never return greater than buflen-1
 static inline size_t strnlen(const unsigned char* str, size_t buflen) {
   unsigned int i;

@@ -842,35 +842,42 @@ int ext2_path_to_inode(void *vself, BlockDeviceIF *device, const char *utf8path,
   return inode;
 }
 
-static int ext3_fstat(void *self, BlockDeviceIF *device, int inode, struct stat *buf) {
-  ext2fs *fs = self;
-  ext2fs_readmeta(device, fs);
+static int ext3_fstat(void *self, BlockDeviceIF *device, int filefd, struct stat *buf) {
+  ext2fs *efs = self;
+  ext2fs_readmeta(device, efs);
+  
+  ext2fs_file *file = file_from_internalfd(self, filefd, NULL);
+  
+  if (!file) {
+    _fs_error(self, -1, "Bad internal fd descriptor");
+    return -1;
+  }
   
   memset(buf, 0, sizeof(*buf));
   
   //static int read_inode(ext2fs *efs, BlockDeviceIF *device, int inode, INode *out)
   INode inode;
-  if (read_inode(self, device, inode, &inode) < 0) {
+  memset(&inode, 0, sizeof(inode));
+  
+  if (read_inode(efs, device, file->inode_nr, &inode) != 0) {
     _fs_error(efs, -1, "Inode read error");
     return -1;
   }
   
-  buf->st_msize = size_lower32;
+  e9printf("inode.size_lower32: %d\n", inode.size_lower32);
+  e9printf("inode.size_lower32: %d %d %d\n", inode.type, inode.userid, inode.groupid);
+  buf->st_msize = inode.size_lower32;
   
   return 0;
 }
 
-static int ext3_stat(void *self, BlockDeviceIF *device, int inode, struct stat *buf, char namebuf[MAX_PATH]) {
-  ext2fs *fs = self;
-  ext2fs_readmeta(device, fs);
+static int ext3_stat(void *self, BlockDeviceIF *device, int inode, struct stat *buf) {
+  ext2fs *efs = self;
+  ext2fs_readmeta(device, efs);
   
   memset(buf, 0, sizeof(*buf));
   
-  if (namebuf != NULL) {
-    namebuf[0] = 0;
-  }
-  
-  return 0;
+  return -1;
 }
 
 FSInterface *kext2fs_create(BlockDeviceIF *device) {

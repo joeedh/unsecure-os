@@ -62,7 +62,9 @@ enum {
   KEY_TAB = 0xf,
   KEY_SPACE = 0x20,
   KEY_CAPSLOCK = 0x3f,
-  KEY_NUMLOCK = 0x68
+  KEY_NUMLOCK = 0x68,
+  KEY_PAGEUP = 0x6c,
+  KEY_PAGEDOWN = 0x74
 };
 
 #endif /* _KEYBOARD_H */

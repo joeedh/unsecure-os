@@ -8,7 +8,9 @@
 #define EI_NIDENT 16
 
 struct ElfFile;
+
 struct ElfFile *elfloader_load(void *data, int size);
+void *elfloader_instantiate(struct ElfFile *file);
 void elfloader_free(struct ElfFile *file);
 
 typedef uint16_t Elf32_Half;
@@ -37,8 +39,10 @@ typedef struct ElfHeader{
 typedef struct ElfSectionHeader {
   Elf32_Word sh_name;
   Elf32_Word sh_type;
+  
   Elf32_Word sh_flags;
   Elf32_Addr sh_addr;
+  
   Elf32_Off sh_offset;
   Elf32_Word sh_size;
   Elf32_Word sh_link;
@@ -49,8 +53,9 @@ typedef struct ElfSectionHeader {
 
 typedef struct ElfSection {
   struct ElfSection *next, *prev;
+  char name[128];
   
-  void *data;
+  unsigned char *data;
   ElfSectionHeader header;
 } ElfSection;
 
@@ -67,20 +72,16 @@ typedef struct ElfProgramHeader {
 
 typedef struct ElfProgramSection {
   struct ElfProgramSection *next, *prev;
+  
   ElfProgramHeader header;
   uintptr_t vaddr;
   void *data;
 } ElfProgramSection;
 
-typedef struct Symbol {
-  char name[256];
-  uintptr_t addr;
-  uintptr_t final_addr;
-} Symbol;
-
+struct Symbol;
 typedef struct ElfFile {
-  Symbol *symbols;
-  int totsymbol;
+  struct Symbol *symbols;
+  int totsymbol, totsymalloc;
   
   uintptr_t entry;
   uintptr_t reloc_base;
@@ -88,6 +89,9 @@ typedef struct ElfFile {
   struct ElfHeader header;
   List sections;
   List program_headers;
+  uintptr_t vbase;
+  
+  unsigned char *fdata;
   
   unsigned char *strtable;
   ElfSection *hash;
@@ -113,7 +117,122 @@ typedef struct Elf32_Sym {
   Elf32_Half st_shndx;
 } Elf32_Sym;
 
-//actually, no paging yet
+typedef struct Symbol {
+  char name[256];
+  ElfSection *section;
+  Elf32_Sym sym;
+  
+  uintptr_t final_addr;
+} Symbol;
+
+enum {
+  STB_LOCAL,
+  STB_GLOBAL,
+  STB_WEAK,
+  STB_LOPROC=13,
+  STB_HIPROC=15
+};
+
+enum {
+  STT_NOTYPE,
+  STT_OBJECT,
+  STT_FUNC,
+  STT_SECTION,
+  STT_FILE,
+  STT_LOPROC=13,
+  STT_HIPROC=15
+};
+
+enum {
+  SHN2_ABS,
+  SHN2_COMMON, //slignment is in sym->st_value
+  SHN2_UNDEF
+};
+
+
+enum {
+  ET_NONE,
+  ET_RELOC,
+  ET_EXEC,
+  ET_DYN,
+  ET_CORE,
+  ET_LOPROC=0xff00,
+  ET_HIGHPROC=0xffff
+};
+
+enum { //contents of ->e_ident
+  EI_MAGIC0,
+  EI_MAGIC1,
+  EI_MAGIC2,
+  EI_MAGIC3,
+  EI_CLASS,
+  EI_DATA,
+  EI_VERISON,
+  EI_PAD,
+};
+
+enum {
+  CLASSNONE,
+  CLASS32,
+  CLASS64
+};
+
+enum {
+  ENCODING_ERROR,
+  ENCODING_LSB,
+  ENCODING_MSB
+};
+
+enum { //special section names
+  SHN_UNDEF,
+  SHN_LORESERVE,
+  SHN_LOPROC,
+  SHN_HIPROC,
+  SHN_ABS,
+  SHN_COMMON,
+  SHN_HIRESERVE
+};
+
+enum { //section type
+  SHT_NULL,     //0
+  SHT_PROGBITS, //1
+  SHT_SYMTAB,   //2
+  SHT_STRTAB,   //3
+  SHT_RELA,     //4
+  SHT_HASH,     //5
+  SHT_DYNAMIC,  //6
+  SHT_NOTE,     //7
+  SHT_NOBITS,   //8
+  SHT_REL,      //9
+  SHT_SHLIB,    //10
+  SHT_DYNSYM,   //11
+  SHT_LOPROC,   //12
+  SHT_HIPROC,   //13
+  SHT_LOUSER,   //14
+  SHT_HIUSER    //15
+};
+
+enum {
+  PT_NULL,
+  PT_LOAD,
+  PT_DYNAMIC,
+  PT_INTERP,
+  PT_NOTE,
+  PT_SHLIB,
+  PT_PHDR,
+  PT_LOPROC=0x70000000,
+  PT_HIPROC=0x7FFFFFFF
+};
+
+#define ELF32_R_SYM(i) ((i)>>8)
+#define ELF32_R_TYPE(i) ((unsigned char)(i))
+#define ELF32_R_INFO(s,t) (((s)<<8)+(unsigned char)(t)
+
+#define ELF32_ST_BIND(i) ((i)>>4)
+#define ELF32_ST_TYPE(i) ((i)&0xf)
+#define ELF32_ST_INFO(b,t) (((b)<<4)+((t)&0xf))
+
+//XXX: actually, no paging yet
 #define PAGE_SIZE 16
 
 #endif /* _ELFLOADER_H */

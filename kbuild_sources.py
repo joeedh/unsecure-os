@@ -23,12 +23,15 @@ kbuild_sources += glob("kernel/drivers/keyboard/*.c")
 kbuild_sources += glob("kernel/libc/*.c")
 kbuild_sources += glob("kernel/task/*.c")
 kbuild_sources += glob("kernel/process/*.c")
+kbuild_sources += glob("kernel/syscalls/*.c")
 
 libc_sources = [
   "kernel/libc/libc.c",
   "kernel/libc/crt0.c",
   "kernel/libc/fprintf.c"
 ];
+
+lcsrc = " ".join(libc_sources)
 
 kbuild_sources = filter(kbuild_sources, [
   "kernel/libc/crt0.c"
@@ -120,13 +123,19 @@ targets = OrderedDict([
   "core_x86.o"  ,  ["kernel/core_x86.nasm"],
   "main_sources" ,   kbuild_sources,
   "crt0.custom", [
-    CC + " " + CFLAGS +  " -c kernel/libc/crt0.c -o build/crt0.o", 
+    CC + " " + CFLAGS +  " -fPIC -c kernel/libc/crt0.c -o build/crt0.o", 
   ],
   "libc.custom", [
-    CC + " " + CFLAGS +  " -c kernel/libc/libc.c -o build/user_libc.o", 
+    CC + " " + CFLAGS +  " -fPIC -c kernel/libc/libc.c -o build/user_libc.o", 
+  ],
+  "libc2.custom", [
+    CC + " " + CFLAGS +  " -fPIC -c kernel/libc/fprintf.c -o build/user_fprintf.o", 
+  ],
+  "libc3.custom", [
+    CC + " " + CFLAGS +  " -fPIC -c kernel/libc/stdio.c -o build/user_stdio.o", 
   ],
   "link_libc_a.custom", [
-    AR + " cru build/libc.a build/user_libc.o"
+    AR + " cru build/libc.a build/user_*.o"
     #CC + " -ffreestanding -fPIC -shared -o build/libc.so build/user_libc.o"
   ],
   "install-userland.custom", [
@@ -134,7 +143,7 @@ targets = OrderedDict([
   ],
   "appfiles.custom", [
     #CC + " -Iinstall/usr/include -c " + shglob("apps/*.c") + " -ffreestanding -funsigned-char -fPIC"
-    CC + " -Iinstall/usr/include apps/ls.c -std=c99 -o install/bin/ls -ffreestanding -funsigned-char -fPIC -lgcc -L install/usr/lib"
+    CC + " -Iinstall/usr/include apps/ls.c -fPIC -std=c99 -o install/bin/ls -ffreestanding -funsigned-char -lgcc -L install/usr/lib"
   ],
   "grub.iso.custom" , [
     "sh package-tinyext2.sh"

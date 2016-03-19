@@ -86,7 +86,7 @@ int tty_file_thread(int argc, char **argv) {
       //int ret = inb(0x3CC);
       //kprintf("%d %x %d %d", ret, ret, ret & 1, ret & 128);
       
-      terminal_reset_cursor();
+      terminal_reset_hcursor();
     }
     
     

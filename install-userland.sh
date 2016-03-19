@@ -1,10 +1,11 @@
 #!/bin/sh
 
+cp kernel/syscalls/syscalls.h install/usr/include/sys
 cp kernel/libc/*.h install/usr/include
-rm install/usr/include/kmalloc.h  
+rm install/usr/include/kmalloc.h 
 cp build/crt0.o .
 
-cp kernel/drivers/fs/dirent.h install/usr/include
+cp kernel/drivers/fs/dirent.h install/usr/include/sys
 cp build/libc.a install/usr/lib
 cp -r install/usr apps/usr
 

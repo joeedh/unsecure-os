@@ -6,6 +6,7 @@
 #include "libc/stdio.h"
 #include "libc/kmalloc.h"
 #include "libc/path.h"
+#include "loader/elfloader.h"
 #include "interrupts.h"
 #include "debug.h"
 
@@ -16,6 +17,7 @@
 #include "libc/string.h"
 #include "drivers/keyboard/keyboard.h"
 #include "task/process.h"
+#include "syscalls/syscalls.h"
 
 enum {
   STATE_RUNNING = 0,
@@ -71,6 +73,8 @@ int cat_test_command(int argc, char **argv) {
 void elf_test(FILE *stdout, FILE *stderr) {
   FILE *file = fopen("/bin/ls", "rb");
   
+  fprintf(stdout, "elf test!\n");
+  
   if (!file) {
     fprintf(stdout, "Failed to open file\n");
     return;
@@ -78,7 +82,7 @@ void elf_test(FILE *stdout, FILE *stderr) {
   
   struct stat st;
   
-  if (fstat(file->fd, &st)) {
+  if (fstat(file->fd, &st) != 0) {
     fprintf(stdout, "Failed to stat file\n");
     return;
   }
@@ -93,10 +97,56 @@ void elf_test(FILE *stdout, FILE *stderr) {
   fprintf(stdout, "size: %d\n", size);
   unsigned char *data = kmalloc(size);
   
-  //int fstat(int fd, struct stat *out)
+  //extern unsigned char _test_elfdata[];
+  //extern int _test_elfdata_size;
+  
   int read = fread(data, size, 1, file);
   
-  fprintf(stdout, "read: %d of %d\n", read);
+  fprintf(stdout, "read: %d of %d\n\n", read, size);
+  fprintf(stdout, "read size: %d\n", size);
+  //fprintf(stdout, "test size: %d\n", _test_elfdata_size);
+  //fprintf(stdout, "memcmp result: %d\n", memcmp(data, _test_elfdata, _test_elfdata_size));
+  
+  //fprintf(stdout, "%c%c%c%c%c\n", data[0], data[1], data[2], data[3], data[4]);
+  //data = _test_elfdata;
+  //size = _test_elfdata_size;
+  
+  ElfFile *elf = elfloader_load(data, size);
+  unsigned char *ret = elfloader_instantiate(elf);
+  void *entry = ret + (elf->header.e_entry - elf->vbase);
+  
+  //SysCallPtr *calltable, int sin, int sout, 
+  //          int serr, char **argv, char **envv) 
+  int (*_start)(SysCallPtr *syscalls, int sin, int sout, int serr, char **argv, char **envv)
+            = entry;
+  
+  e9printf("vbase: %x\n", elf->vbase);
+  e9printf("entry: %x %x, offset: %x\n", entry, elf->header.e_entry, elf->header.e_entry - elf->vbase);
+   
+  e9printf("\n====Disassembly=====\n");
+  unsigned char *casm = entry;
+  for (int i=0; i<15; i++) {
+    e9printf("%x %x %x\n", casm[0], casm[1], casm[2]);
+    casm += 3;
+  }
+  
+  e9printf("calling. . .\n");
+  
+  unsigned char *argv[] = {
+    "ls",
+    "/usr/bin",
+    "yay",
+    NULL
+  };
+  
+  unsigned char *envv[] = {
+    "PATH",
+    "/bin:/usr/bin:/usr/local/bin:/sbin:/usr/sbin",
+    NULL
+  };
+  
+  int ret2 = _start(_syscalltable, stdout->fd, stdout->fd, stdout->fd, argv, envv);
+  e9printf("process ret: %d\n", ret2);
 }
 
 int ls_test_command(int argc, char **argv) {
@@ -305,6 +355,8 @@ int kcli_main(int argc, char **argv) {
     unsigned char ch = code & 127;
     
     if (keyboard_isprint(ch) || ch == '\n' || ch == '\r' || ch == '\t') {
+      terminal_resetscroll();
+      
       ch = keyboard_handle_case(ch);
       
       fputc(ch, stdout);
@@ -461,13 +513,25 @@ int kcli_main(int argc, char **argv) {
           if (commandlen > 0) {
             commandlen--;
             commandbuf[commandlen] = 0;
-            fputc(7, stdout);
+            fputc(8, stdout);
           }
+          break;
+        case KEY_PAGEUP:
+          fputc(27, stdout);
+          fputc('[', stdout);
+          fputc(15, stdout);
+          fputc('S', stdout);
+          break;
+        case KEY_PAGEDOWN:
+          fputc(27, stdout);
+          fputc('[', stdout);
+          fputc(15, stdout);
+          fputc('T', stdout);
           break;
       }
     }
       
-    terminal_reset_cursor();
+    terminal_reset_hcursor();
     //task_sleep(5);
   }
 }

@@ -150,7 +150,7 @@ PRINTF {
           i++;
           break;
         case 'c':
-          PUTCHAR(c);
+          PUTCHAR(va_arg(vl, int));
           i++;
           written++;
           break;
