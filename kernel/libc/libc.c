@@ -35,8 +35,8 @@ extern SysCallPtr *syscalls;
 #define STUB(name) void name(){}
 
 SYS_I1I(exit, SYS_EXIT);
-SYS_I1I(read, SYS_READ);
-SYS_I1I(write, SYS_WRITE);
+SYS_I3I(read, SYS_READ);
+SYS_I3I(write, SYS_WRITE);
 SYS_I1I(opendir, SYS_OPENDIR);
 SYS_I1I(closedir, SYS_CLOSEDIR);
 SYS_I1I(readdir, SYS_READDIR);

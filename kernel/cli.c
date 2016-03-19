@@ -134,7 +134,7 @@ void elf_test(FILE *stdout, FILE *stderr) {
   
   unsigned char *argv[] = {
     "ls",
-    "/usr/bin",
+    "/usr/include",
     "yay",
     NULL
   };
