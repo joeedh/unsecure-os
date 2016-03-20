@@ -154,39 +154,35 @@ __k_gdt_end:
 global stack_top;
 
 section .bootstrap_stack, nobits
-align 8
-stack_bottom:
+stack_bottom: align 8
 resb 65536
 stack_top:
 
-resb 16; ;paranoia safety pad between stack and task/process data
-
+section .text
 global tasks, terminal_buffer
 
 terminal_buffer: align 8
-resb VGA_HEIGHT*VGA_WIDTH*2;
+times VGA_HEIGHT*VGA_WIDTH*2 db 0;
 
 global terminal_history, terminal_linelasts;
 
 terminal_history: align 8;
-resb TTY_BUFFER_ROWS*VGA_WIDTH*2;
-
+  times TTY_BUFFER_ROWS*VGA_WIDTH*2 db 0;
 terminal_linelasts: align 8;
-resb TTY_BUFFER_ROWS;
-
+  times TTY_BUFFER_ROWS db 0;
 tasks: align 8
-resb TASK_SIZE*MAX_TASKS;
+  times TASK_SIZE*MAX_TASKS db 0;
 tasks_end:
 
 global processes;
 processes: align 8
-  resb PROCESS_SIZE*MAX_TASKS;
+  times PROCESS_SIZE*MAX_TASKS db 0;
 processes_end:
 
 global tss_stack_top, tss_stack_bottom;
 
 tss_stack_bottom: align 8
-resb 65536
+times 65536 db 0
 tss_stack_top:
 
 section .irq.table, nobits

@@ -191,7 +191,7 @@ static int keyboard_handle_toggles(int c) {
   return 1;
 }
 
-short keyboard_poll() {
+int keyboard_poll() {
   klock_lock(&keyboard_lock);
   //volatile unsigned int state = safe_entry();
   
@@ -219,7 +219,7 @@ int kb_my_isprint(int c) {
   return isprint(c) || c == '\r' || c == '\n' || c == '\t' || c == ' ';
 }
 
-short keyboard_handle_case(short c) {
+int keyboard_handle_case(short c) {
   if (c < 0)
     return c;
   

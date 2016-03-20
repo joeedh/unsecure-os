@@ -1,9 +1,12 @@
 #ifndef _KPROCESS_H
+#define _KPROCESS_H
 
 #include "../timer.h"
 #include "task.h"
 #include "../io.h"
 #include "../libc/list.h"
+#include "lock.h"
+#include "rwlock.h"
 
 #define MAX_PROC_THREADS 32
 #define DEFAULT_STDFILE_SIZE 1024*32
@@ -25,11 +28,15 @@ typedef struct Process {
   void (*finishfunc)(int retval, int tid, int pid);
   
   int argc;
-  char **argv;
+  char **argv, **environ;
   
   volatile int stdin, stdout, stderr;
+  RWLock resource_lock;
+  RWLock environ_lock;
   
-  List memory; //list of MemNode references
+  void *exec_image;
+  
+  List memory; //list of MemNodes references (via LinkNodes)
   List open_files;
   List threads;
   List childprocs;
@@ -43,7 +50,7 @@ void process_initialize();
 int process_set_stdout(Process *process, int stdout);
 int process_set_stderr(Process *process, int stderr);
 int process_set_stdin(Process *process, int stdin);
-Process *process_from_pid(intptr_t pid);
+Process *process_from_pid(intptr_t pid, int skiplocks);
 
 Process *process_get_current();
 int process_get_stdin(Process *p);

@@ -4,14 +4,14 @@
 void keyboard_initialize();
 void keyboard_post_irq_enable();
 
-short keyboard_handle_case(short c);
+int keyboard_handle_case(short c);
 
 int keyboard_isprint(int chr);
 int keyboard_toascii(int chr);
 
 int keyboard_get_modflag();
 
-short keyboard_poll();
+int keyboard_poll();
 short get_raw_keycode(short code);
 
 unsigned char getchar();

@@ -2,6 +2,25 @@
 #include "string.h"
 #include "libk.h"
 
+//modifies/splits line
+int shlex(char *line, char *outbuf[MAX_ARGV]) {
+  int n=0, argc=0;
+  
+  while ((n = strcspn(line, " \t\n\r\""))) {
+    outbuf[argc++] = line;
+    
+    line[n] = 0;
+    line += n+1;
+  }
+  
+  if (*line)
+    *line = 0;
+  
+  outbuf[argc++] = 0;
+  
+  return argc;
+}
+
 static unsigned int my_strhas(int ch, unsigned char *str) {
   while (*str) {
     if (*str == ch)
@@ -67,15 +86,23 @@ int normpath(unsigned char *path, size_t buffersize) {
   strcpy(buf, strtrim(path));
   strcpy(path, buf);
   len = strlen(path);
+
+  unsigned char *path2 = path;
   
-  if (path[0] != '/') {
+  j = 0;
+  while (path2[0] == '/' && path2[1] == '/') {
+    path2++;
+  }
+  
+  if (path2[0] != '/') {
     buf[j++] = '/';
   }
+  
   for (int i=0; i<len; i++) {
-    if (i > 0 && i == len-1 && path[i] == '/') {
+    if (i > 0 && i == len-1 && path2[i] == '/') {
       break;
     }
-    buf[j++] = path[i];
+    buf[j++] = path2[i];
   }
   buf[j] = 0;
   

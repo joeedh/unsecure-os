@@ -12,15 +12,19 @@ typedef union {
   int (*icall4i)(int a, int b, int c, int e);
   int (*icall5i)(int a, int b, int c, int e, int d);
   
+  int (*icall1p)(void *pointer);
+  int (*icall6p)(void *p1, void *p2, void *p3, void *p4, void *p5, void *p6);
+  
   //for memory allocation
   intptr_t (*pcall0i)();
-  intptr_t (*pcall1i)(int a);
+  void *(*pcall1i)(int a);
   void (*vcall1i)(intptr_t ptr);
 } SysCallPtr;
 
 #ifdef __KERNEL_BUILD__
 #ifndef SYSCALL_INTERN
 extern SysCallPtr _syscalltable[];
+extern int _totsyscalls;
 #endif
 #endif
 
@@ -35,10 +39,15 @@ enum {
   SYS_PIPE,
   SYS_WAIT,
   SYS_WAITPID,
-  SYS_KMALLOC,
-  SYS_KFREE,
+  SYS_PMALLOC,
+  SYS_PFREE,
   SYS_FLUSH,
-  //SYS_ERRNO
+  SYS_KEYBOARD_POLL,
+  SYS_KEYBOARD_ISPRINT,
+  SYS_KEYBOARD_HANDLE_CASE,
+  SYS_POSIX_SPAWN,
+  SYS_FILE_OPEN,
+  SYS_FILE_CLOSE
 };
 
 #endif /* _SYSCALLS_H */

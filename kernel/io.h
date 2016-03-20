@@ -32,6 +32,12 @@ static inline void safe_exit(unsigned int eflags) {
         ::"r"(eflags) );
 }
 
+static inline int have_interrupts() {
+  int eflags = read_eflags();
+  
+  return eflags & (1<<9);
+}
+
 /*Write a 8/16/32-bit value to a segment:offset address too. Note that much like in farpeek, this version of farpoke saves and restore the segment register used for the access.*/
 static inline void farpokeb(uint16_t sel, void* off, uint8_t v)
 {

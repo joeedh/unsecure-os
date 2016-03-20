@@ -15,7 +15,7 @@ int _start(SysCallPtr *calltable, int sin, int sout,
 {
   syscalls = calltable;
   
-  env = envv;
+  env = (unsigned char**) envv;
   
   stdin = &_stdin;
   stdout = &_stdout;

@@ -6,6 +6,13 @@
 #include "../libc/ctype.h"
 #include "../libc/libk.h"
 
+//#define ELF_DEBUG
+#ifdef ELF_DEBUG
+#define elfdebug(...) e9printf(__VA_ARGS__)
+#else
+#define elfdebug(...)
+#endif
+
 #ifndef MAX2
 #define MAX2(a, b) ((a) > (b) ? (a) : (b))
 #endif
@@ -53,21 +60,16 @@ static void read_symbols(ElfFile *file, unsigned char *cdata, ElfSection *ss) {
     if (i > 0) {
       unsigned char *str = file->strtable + sym.st_name;
       
-      //*
       Symbol *sym2 = alloc_symbol(file);
       
       memset(sym2, 0, sizeof(Symbol));
       strncpy(sym2->name, str, sizeof(sym2->name)-1);
       sym2->sym = sym;
       
-      int bind = ELF32_ST_BIND(sym.st_info);
-      int type = ELF32_ST_TYPE(sym.st_info);
-      
-      e9printf("%s:%d:%d:%d\n", str, type, bind, sym.st_shndx);
+      elfdebug("%s:%d:%d:%d\n", str, ELF32_ST_TYPE(sym.st_info), ELF32_ST_BIND(sym.st_info), sym.st_shndx);
       
       ElfSection *ss = get_section(file, sym.st_shndx);
       sym2->section = ss;
-      //*/
     }
     
     c += sh->sh_entsize;
@@ -80,7 +82,7 @@ ElfFile *elfloader_load(void *data, int size) {
   
   unsigned char *cdata = data;
   if (cdata[0] != 0x7f || cdata[1] != 'E' || cdata[2] != 'L' || cdata[3] != 'F') {
-    e9printf("not an elf file!\n");
+    elfdebug("not an elf file!\n");
     return NULL; //not an elf file
   }
   
@@ -102,7 +104,7 @@ ElfFile *elfloader_load(void *data, int size) {
   
   //unsigned int symtable = h->e_shstrndx;
   
-  e9printf("reading sections. . .\n");
+  elfdebug("reading sections. . .\n");
   
   for (unsigned int i=0; i<totsh; i++) {
     uintptr_t addr = (uintptr_t)data + h->e_shoff + shsize*i;
@@ -112,7 +114,7 @@ ElfFile *elfloader_load(void *data, int size) {
 
     memcpy(sh, (void*)addr, sizeof(*sh));
 
-    e9printf("  section name: %d %x\n", ss->header.sh_name, addr);
+    elfdebug("  section name: %d %x\n", ss->header.sh_name, addr);
 
     if (sh->sh_type == SHT_HASH) {
       file->hash = ss;
@@ -120,7 +122,7 @@ ElfFile *elfloader_load(void *data, int size) {
     
     //save string table
     if (sh->sh_type == SHT_STRTAB) {
-      e9printf("Found string table\n");
+      elfdebug("Found string table\n");
       file->strtable = cdata + sh->sh_offset;
     }
     
@@ -129,32 +131,31 @@ ElfFile *elfloader_load(void *data, int size) {
     klist_append(&file->sections, ss);
   }
   
+  #ifdef ELF_DEBUG
   unsigned char *sectname_strtable = file->strtable = get_section(file, h->e_shstrndx)->data;
+  #endif
   
-  e9printf("\n");
+  elfdebug("\n");
   
   //other symbols later
   for (ElfSection *ss = file->sections.first; ss; ss=ss->next) {
     ElfSectionHeader *sh = &ss->header;
-    unsigned char *sname = sectname_strtable + sh->sh_name;
-    
-     e9printf("  sname: %s\n", sname, ss->header.sh_name);
-    //e9printf("  section type: %d\n", ss->header.sh_type);
+    //elfdebug("  sname: %s\n", sectname_strtable + sh->sh_name);
 
     //save string table
     if (sh->sh_type == SHT_STRTAB) {
-      e9printf("Found string table\n");
+      elfdebug("Found string table\n");
       //file->strtable = cdata + sh->sh_offset;
     }
 
     if (ss->header.sh_type == SHT_SYMTAB) {
-      e9printf("\nreading full symbol table. . .\n\n");
+      elfdebug("\nreading full symbol table. . .\n\n");
       file->strtable = get_section(file, sh->sh_link)->data;
       read_symbols(file, cdata, ss);
     }
     
     if (ss->header.sh_type == SHT_DYNSYM) {
-      e9printf("\nreading dynamic symbol table. . .\n\n");
+      elfdebug("\nreading dynamic symbol table. . .\n\n");
       file->strtable = get_section(file, sh->sh_link)->data;
       read_symbols(file, cdata, ss);
     }
@@ -166,7 +167,7 @@ ElfFile *elfloader_load(void *data, int size) {
     
     //save string table
     if (sh->sh_type == SHT_STRTAB) {
-      e9printf("Found string table\n");
+      elfdebug("Found string table\n");
       file->strtable = cdata + sh->sh_offset;
       break;
     }
@@ -174,7 +175,7 @@ ElfFile *elfloader_load(void *data, int size) {
   
   file->strtable = get_section(file, h->e_shstrndx)->data;
     
-  e9printf("reading program headers. . .\n");
+  elfdebug("reading program headers. . .\n");
   for (unsigned int i=0; i<totph; i++) {
     uintptr_t addr = (uintptr_t)data + h->e_phoff + phsize*i;
     
@@ -195,24 +196,23 @@ void *elfloader_instantiate(ElfFile *file) {
   int first = 1;
   uintptr_t size = 0;
   
-  e9printf("\n");
+  elfdebug("\n");
   
   for (ps=file->program_headers.first; ps; ps=ps->next) {
     ElfProgramHeader *ph = &ps->header;
     
-    uintptr_t addr = ph->p_vaddr;
     if (ph->p_align > 1 && (ph->p_vaddr % ph->p_align)) {
       //ph->p_vaddr -= ph->p_vaddr % ph->p_align;
       //ph->p_vaddr += ph->p_align - (ph->p_vaddr & (ph->p_align-1));
     }
     
-    e9printf("ph->type: %d\n", ph->p_type);
-    e9printf("ph->filesz: %d\n", ph->p_filesz);
-    e9printf("ph->memsz: %d\n", ph->p_memsz);
-    e9printf("ph->offset: %d\n", ph->p_offset);
-    e9printf("ph->vaddr: %d\n", ph->p_vaddr);
-    e9printf("ph->paddr: %d\n", ph->p_paddr);
-    e9printf("\n");
+    elfdebug("ph->type: %d\n", ph->p_type);
+    elfdebug("ph->filesz: %d\n", ph->p_filesz);
+    elfdebug("ph->memsz: %d\n", ph->p_memsz);
+    elfdebug("ph->offset: %d\n", ph->p_offset);
+    elfdebug("ph->vaddr: %d\n", ph->p_vaddr);
+    elfdebug("ph->paddr: %d\n", ph->p_paddr);
+    elfdebug("\n");
     
     if (first) {
       first = 0;
@@ -228,11 +228,11 @@ void *elfloader_instantiate(ElfFile *file) {
     size = MAX2(size, a - base);
   }
   
-  e9printf("reloc base: %d\n", base);
-  e9printf("size: %d\n", size);
+  elfdebug("reloc base: %d\n", base);
+  elfdebug("size: %d\n", size);
   
   if (size == 0) {
-    e9printf("elf load error!\n");
+    elfdebug("elf load error!\n");
     return NULL;
   }
   
@@ -245,7 +245,7 @@ void *elfloader_instantiate(ElfFile *file) {
     uintptr_t a = ph->p_vaddr - base;
     uintptr_t b = ph->p_offset;
     
-    e9printf("ph->p_type: %d\n", ph->p_type);
+    elfdebug("ph->p_type: %d\n", ph->p_type);
     
     switch (ph->p_type) {
       case PT_PHDR:
@@ -253,23 +253,26 @@ void *elfloader_instantiate(ElfFile *file) {
         memcpy(image+a, file->fdata+b, ph->p_filesz);
         break;
       case PT_INTERP:
-        e9printf("DYNAMIC BINARY!\n");
+        elfdebug("DYNAMIC BINARY!\n");
         break;
     }
   }
   
   file->vbase = base;
   
-  e9printf("\n");
+  elfdebug("\n");
   
+#ifdef ELF_DEBUG
   char *strtable = file->strtable;
   ElfSection *got=NULL, *gotplt=NULL;
+#endif
   
+#ifdef ELF_DEBUG
   for (ElfSection *ss = file->sections.first; ss; ss=ss->next) {
     ElfSectionHeader *sh = &ss->header;
     
     if (sh->sh_type == SHT_STRTAB) {
-      e9printf("Found string table\n");
+      elfdebug("Found string table\n");
       strtable = file->fdata + sh->sh_offset;
     }
 
@@ -283,22 +286,36 @@ void *elfloader_instantiate(ElfFile *file) {
       Elf32_Rel rel;
       int totrel = sh->sh_size / sh->sh_entsize;
       
-      e9printf("found relocation section; %d entries.", totrel);
+      elfdebug("found relocation section; %d entries.", totrel);
       /*
       for (int i=0; i<totrel; i++) {
         memcpy(&rel, ss->data + i*sh->sh_entsize, sizeof(rel));
-        e9printf("sym: %d\n", ELF32_R_SYM(rel.r_info));
-        e9printf("sym: %d\n", ELF32_R_SYM(rel.r_info));
+        elfdebug("sym: %d\n", ELF32_R_SYM(rel.r_info));
+        elfdebug("sym: %d\n", ELF32_R_SYM(rel.r_info));
       }*/
     }
   }
+#endif
   
-  e9printf("image: %x\n", image);
+  elfdebug("image: %x\n", image);
   
   return image;
 }
 
 void elfloader_free(ElfFile *file) {
+  ElfSection *ss, *snext;
+  ElfProgramSection *ps, *pnext;
+  
+  for (ss=file->sections.first; ss; ss=snext) {
+    snext = ss->next;
+    kfree(ss);
+  }
+  
+  for (ps=file->program_headers.first; ps; ps=pnext) {
+    pnext = ps->next;
+    kfree(ps);
+  }
+  
   kfree(file);
 }
 

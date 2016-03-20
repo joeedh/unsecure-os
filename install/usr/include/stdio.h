@@ -3,6 +3,7 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include <stdarg.h>
 
 typedef struct FILE {
   int fd;
@@ -12,8 +13,15 @@ typedef struct FILE {
 extern FILE *stdout, *stderr, *stdin;
 #endif
 
+#ifndef __KERNEL_BUILD__
+int printf(char *fmt, ...);
+#endif
+
+int vfprintf(FILE *arg, char *args, va_list vl);
+
 int fprintf(FILE *file, char *fmt, ...);
 int sprintf(char *buf, char *fmt, ...);
+int fflush(FILE *file);
 
 FILE *fopen(char *path, char *mode);
 int fclose(FILE *file);

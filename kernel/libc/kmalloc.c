@@ -8,6 +8,7 @@
 #include "../task/critical_section.h"
 #include "../drivers/tty/tty.h"
 #include "../definitions/memory.h"
+#include "../debug.h"
 
 #define MAGIC_HEAD_CHECKSUM 45436334
 #define MAGIC_TAIL_CHECKSUM 25463450
@@ -24,6 +25,8 @@ typedef struct MemNode {
   
   char *file;
   int line;
+
+  void *custom_ptr, *pad;
   
   int pid; //MEM_FREED is put here
   struct MemNode *pair;
@@ -245,6 +248,7 @@ int _ktestmem(void *vmem) {
   uintptr_t base = (uintptr_t)vmem;
   
   if (base & 7) {
+    stacktrace(klogf);
     klogf("eek, alignment error! %x\n", vmem);
     return 0;
   }
@@ -338,6 +342,26 @@ void *_krealloc(void *memory, size_t newsize, char *file, int line) {
 
   //ksection_unlock(&kmalloc_lock);
   return newmem;
+}
+
+void _kmalloc_set_custom_ptr(void *memory, void *ptr, char *file, int line) {
+  if (!_ktestmem(memory))
+    return;
+  
+  MemNode *node = memory;
+  node--;
+  
+  node->custom_ptr = ptr;
+}
+
+void *_kmalloc_get_custom_ptr(void *memory, char *file, int line) {
+  if (!_ktestmem(memory))
+    return NULL;
+  
+  MemNode *node = memory;
+  node--;
+  
+  return node->custom_ptr;
 }
 
 static void _kprintf_block(MemNode *node, int indent) {

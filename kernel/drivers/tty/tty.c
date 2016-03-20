@@ -267,15 +267,21 @@ int tty_putchar(TTYBuffer *tty, unsigned char code) {
    
   if (tty->escape_mode) {
     tty_do_escape(tty, code);
+    
+    //klock_unlock(&tty_lock);
     return 0;
   }
 
   if (code == 27) {
     //escape key!
     tty->escape_mode = 27;
+    
+    //klock_unlock(&tty_lock);
     return 0;
   } else if (code == 155) { //single code version of ESC[
     tty->escape_mode = 155;
+    
+    //klock_unlock(&tty_lock);
     return 0;
   }
 
@@ -321,6 +327,8 @@ int tty_putchar(TTYBuffer *tty, unsigned char code) {
     tty_putchar(tty, ' ');
     tty_putchar(tty, ' ');
     tty_putchar(tty, ' ');
+    
+    //klock_unlock(&tty_lock);
     return 0;
   } else {
     tty->buffer[idx] = make_vgaentry(code, tty->fg, tty->bg);
@@ -344,8 +352,8 @@ int tty_putchar(TTYBuffer *tty, unsigned char code) {
   if (y > VGA_HEIGHT) {
     tty->scrolly_off = y - VGA_HEIGHT + 1;
   }
-  //klock_unlock(&tty_lock);
   
+  //klock_unlock(&tty_lock);
   return 0;
 }
 
@@ -402,11 +410,13 @@ void _set_buffer(unsigned short *buffer) {
 }
 
 void terminal_flush() {
+  klock_lock(&tty_lock);
   tty.flip(&tty);
+  klock_unlock(&tty_lock);
 }
 
 void terminal_putchar(unsigned char ch) {
-  //klock_lock(&klock);
+  klock_lock(&tty_lock);
   
   tty_putchar(&tty, ch);
   
@@ -415,7 +425,7 @@ void terminal_putchar(unsigned char ch) {
     tty.flip(&tty);
   }
   
-  //klock_unlock(&klock);
+  klock_unlock(&tty_lock);
 }
 
 void tty_scroll(TTYBuffer *tty, int delta) {

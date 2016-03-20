@@ -3,6 +3,25 @@
 from glob import *
 import os.path, os
 
+installdirs = [
+  "install",
+  "install/bin",
+  "install/lib",
+  "install/etc",
+  "install/var",
+  "install/tmp",
+  "install/usr",
+  "install/usr/bin",
+  "install/usr/include",
+  "install/usr/lib",
+  "install/usr/share",
+  "install/usr/local"
+];
+
+for dir in installdirs:
+  if not es.path.exists(dir):
+    os.mkdir(dir)
+  
 def filter(srcs, remove_list):
   srcs2 = []
 

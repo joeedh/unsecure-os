@@ -19,6 +19,8 @@
 #include "task/process.h"
 #include "syscalls/syscalls.h"
 
+#include "libc/stdlib.h"
+
 enum {
   STATE_RUNNING = 0,
   STATE_WAITING = 1
@@ -71,6 +73,7 @@ int cat_test_command(int argc, char **argv) {
 }
 
 void elf_test(FILE *stdout, FILE *stderr) {
+#if 0
   FILE *file = fopen("/bin/ls", "rb");
   
   fprintf(stdout, "elf test!\n");
@@ -147,6 +150,7 @@ void elf_test(FILE *stdout, FILE *stderr) {
   
   int ret2 = _start(_syscalltable, stdout->fd, stdout->fd, stdout->fd, argv, envv);
   e9printf("process ret: %d\n", ret2);
+#endif
 }
 
 int ls_test_command(int argc, char **argv) {
@@ -172,7 +176,6 @@ int ls_test_command(int argc, char **argv) {
   struct dirent *entry;
   
   while ((entry = readdir(dir))) {
-    //kprintf("  2%s\n", entry->d_name);
     fprintf(stdout, "  %s\n", entry->d_name);
   }
   
@@ -213,9 +216,7 @@ int fs_test_command(int argc, char **argv) {
 }
 
 int kcli_finish(int retval, int tid, int pid) {
-  //kprintf("pid: %d\n", pid);
-  
-  Process *p = process_from_pid(pid);
+  Process *p = process_from_pid(pid, 0);
   CLI_state--;
   
   if (CLI_state < 0)
@@ -224,6 +225,13 @@ int kcli_finish(int retval, int tid, int pid) {
   if (p) {
     process_close(p);
   }
+  
+  return 0;
+}
+
+int kcli_printline(FILE *stdout, char *curworkingdir) {
+  fprintf(stdout, "%s> ", curworkingdir);
+  fflush(stdout);
   
   return 0;
 }
@@ -277,10 +285,66 @@ int shlex_parse(char *line, char *outbuf[MAX_OUT]) {
   return argc;
 }
 
+int kcli_changedir(FILE *stdout, const char *commandbuf, char* curworkingdir) {
+  char _dir[512];
+  char lastcur[512];
+
+  strncpy(lastcur, curworkingdir, 512);
+  strncpy(_dir, commandbuf + strcspn(commandbuf, " \t") + 1, 512);
+
+  char *dir = strtrim(_dir);
+  int dlen = strlen(dir)-1;
+
+  //fprintf(stdout, "dir argument: %d'%s'\n", strlen(dir), dir);
+
+  if (dir[dlen-1] == '/') {
+    dir[dlen-1] = 0;
+  }
+
+  if (!strcmp(dir, "..")) {
+    //fprintf(stdout, "  descending\n");
+    
+    int len = strlen(curworkingdir);
+    
+    while (len >= 1 && curworkingdir[len-1] != '/') {
+      curworkingdir[len-1] = 0;
+      len--;
+    }
+    
+    if (len > 1 && curworkingdir[len-1] == '/') {
+      curworkingdir[len-1] = 0;
+    } else if (len == 0) {
+      curworkingdir[len++] = '/';
+      curworkingdir[len++] = 0;
+    }
+    
+    return 0;
+  }
+
+  if (dir[0] == '/') {
+    strcpy(curworkingdir, dir);
+  } else {
+    if (curworkingdir[strlen(curworkingdir)-1] != '/') {
+      strcat(curworkingdir, "/");
+    }
+    strcat(curworkingdir, dir);
+  }
+
+  DIR *fdir = opendir(curworkingdir);
+  if (!fdir) {
+    fprintf(stdout, "Error: Invalid directory %s\n", curworkingdir);
+    
+    strcpy(curworkingdir, lastcur);
+  } else {
+    closedir(fdir);
+  }
+  
+  return 0;
+}
+
 int kcli_main(int argc, char **argv) {
   //int *nullptr = 0x1;
   //*nullptr = 0x0; 
-  //kprintf(":%d\n", *nullptr);
   
   kprintf("Started kcli_main\n");
   terminal_flush();
@@ -298,22 +362,8 @@ int kcli_main(int argc, char **argv) {
   FILE _file = {proc->stdout};
   FILE *stdout = &_file;
   
-  kprintf("%s> ", curworkingdir);
-  fprintf(stdout, "YAY!\n");
-  unsigned char buf[32];
-  
-  int count = fread(buf, sizeof(buf), 1, stdout);
-  kprintf("count: %d\n",  count);
-  buf[count] = 0;
-  kprintf("buf: '%s'\n", buf);
-
-  count = fread(buf, sizeof(buf), 1, stdout);
-  kprintf("count: %d\n",  count);
-  buf[count] = 0;
-  kprintf("buf: '%s'\n", buf);
-  
-  terminal_flush();
-  
+  kcli_printline(stdout, curworkingdir);
+ 
   debug_check_interrupts();
   int laststate = CLI_state;
   
@@ -333,7 +383,7 @@ int kcli_main(int argc, char **argv) {
     }
     
     if (CLI_state != laststate && !CLI_state) {
-      fprintf(stdout, "%s> ", curworkingdir);
+      kcli_printline(stdout, curworkingdir);
     }
     
     laststate = CLI_state;
@@ -342,7 +392,7 @@ int kcli_main(int argc, char **argv) {
     //}
     
     short code = keyboard_poll(); //getchar_nowait();
-    
+      
     if (code > 0 && (code&128) == 0) {
       //kprintf(" %x             %x\n", code & 127, get_raw_keycode(code) & 127); 
       //terminal_flush();
@@ -362,8 +412,7 @@ int kcli_main(int argc, char **argv) {
       fputc(ch, stdout);
       //terminal_putchar(((unsigned char)ch) & 127);
       if (ch == '\n') {
-        fprintf(stdout, "%s> ", curworkingdir);
-        //kprintf("> ");
+        kcli_printline(stdout, curworkingdir);
       }
       
       if (ch == '\n') {
@@ -372,7 +421,15 @@ int kcli_main(int argc, char **argv) {
         if (!strcmp(commandbuf, "top")) {
           print_procs(stdout);
         } else if (!strcmp(commandbuf, "t")) {
-          elf_test(stdout, stdout);
+          char buf2[256];
+          sprintf(buf2, "/bin/ls %s", curworkingdir);
+          
+          fprintf(stdout, "executing: %s\n\n", buf2);
+          fflush(stdout);
+          
+          system(buf2);
+          
+          //elf_test(stdout, stdout);
           /*
           char **argv = kmalloc(sizeof(char*)*MAX_OUT);
           
@@ -383,7 +440,7 @@ int kcli_main(int argc, char **argv) {
           int argc = 2;
           
           kcli_exec(commandbuf, argc, argv, cat_test_command, 1);
-          fprintf(stdout, "%s> ", curworkingdir);
+          kcli_printline(stdout, curworkingdir);
           //*/
         } else if (commandlen > 2 && commandbuf[0] == 'c' && 
             commandbuf[1] == 'a' && commandbuf[2] == 't' && (commandbuf[3]==' '||commandbuf[3]=='\t'))
@@ -396,62 +453,19 @@ int kcli_main(int argc, char **argv) {
           int argc = shlex_parse(commandbuf, argv);
           
           kcli_exec(commandbuf, argc, argv, cat_test_command, 1);
-          fprintf(stdout, "%s> ", curworkingdir);
+          kcli_printline(stdout, curworkingdir);
           //*/
         } else if (commandlen > 2 && commandbuf[0] == 'c' && 
             commandbuf[1] == 'd' && (commandbuf[2] == ' ' || commandbuf[2] == '\t'))
         {
-          char *dir = commandbuf + strcspn(commandbuf, " \t") + 1;
-          dir = strtrim(dir);
-          int dlen = strlen(dir)-1;
-          if (dir[dlen-1] == '/') {
-            dir[dlen-1] = 0;
-          }
-          
-          fprintf(stdout, "dir argument: %d'%s'\n", strlen(dir), dir);
-          
-          char buf2[255];
-          
-          strcpy(buf2, *curworkingdir == '/' ? curworkingdir+1 : curworkingdir);
-          if (buf2[strlen(buf)-1] != '/') {
-            strcat(buf2, "/");
-          }
-          strcat(buf2, dir);
-          normpath(buf2, sizeof(buf2));
-          fprintf(stdout, "buf2: %s\n", buf2);
-          
-          DIR *dir1 = opendir(buf2);
-          fprintf(stdout, "opendir ret: %x\n", dir1);
-          
-          if (dir1) {
-            closedir(dir1);
-            
-            if (!strcmp(dir, "..")) {
-              fprintf(stdout, "  descending\n");
-              
-              int len = strlen(curworkingdir);
-              
-              while (len >= 1 && curworkingdir[len-1] != '/') {
-                curworkingdir[len-1] = 0;
-                len--;
-              }
-              
-              if (len > 0 && curworkingdir[len-1] == '/') {
-                curworkingdir[len-1] = 0;
-              }
-              
-            } else {
-              if (curworkingdir[strlen(curworkingdir)-1] != '/') {
-                strcat(curworkingdir, "/");
-              }
-              strcat(curworkingdir, dir);
-            }
-          } else {
-            fprintf(stdout, "Error: Unknown directory %s\n", dir);
-          }
+          kcli_changedir(stdout, commandbuf, curworkingdir);
           
           commandlen = 0;
           commandbuf[commandlen] = 0;
+          
+          fputc('\r', stdout);
+          kcli_printline(stdout, curworkingdir);
+          fflush(stdout);
         } else if (commandlen > 0 && (!strcmp(commandbuf, "p") || !strcmp(commandbuf, "path"))) {
           unsigned char buf3[256] = "  /path/a  /b/d /";
           strcpy(buf3, "  /path/a  /b/d /");
@@ -471,7 +485,7 @@ int kcli_main(int argc, char **argv) {
           int argc = shlex_parse(commandbuf, argv);
           
           kcli_exec(commandbuf, argc, argv, ls_test_command, 1);
-          fprintf(stdout, "%s> ", curworkingdir);
+          kcli_printline(stdout, curworkingdir);
           //*/
         } else if (commandlen > 0 && !strcmp(commandbuf, "fs")) {
           char **argv = kmalloc(sizeof(char*)*MAX_OUT);
@@ -479,7 +493,7 @@ int kcli_main(int argc, char **argv) {
           
           fprintf(stdout, "\n");
           kcli_exec(commandbuf, argc, argv, fs_test_command, 1);
-          fprintf(stdout, "%s> ", curworkingdir);
+          kcli_printline(stdout, curworkingdir);
         } else if (!strcmp(commandbuf, "heap") || !strcmp(commandbuf, "h")) {
           test_kmalloc();
         } else if (!strcmp(commandbuf, "heap") || !strcmp(commandbuf, "c")) {

@@ -1,4 +1,5 @@
 #include "process.h"
+#include "process_management.h"
 #include "task.h"
 
 #include "../definitions/memory.h"
@@ -22,7 +23,7 @@
 List running_processes, finishing_processes;
 volatile unsigned int pidgen;
 
-static RWLock plock = LOCK_INIT;
+RWLock _procsys_lock = LOCK_INIT;
 
 static Process kernelproc;
 static LinkNode kernelproc_thread;
@@ -30,12 +31,22 @@ static LinkNode kernelproc_thread;
 extern Process processes[MAX_TASKS];
 static int used_processes[MAX_TASKS] = {0,};
 
+//caches return status of recently finish processes
+#define RETCACHE_SIZE 8192
+static volatile int retcache[RETCACHE_SIZE*2];
+static volatile unsigned int retcache_cur;
+static RWLock retcache_lock;
+
 static void _nullop_proc_finishfunc(int retval, int tid, int pid) {
 }
 
 void process_initialize() {
+  memset(retcache, 0, sizeof(retcache));
+  retcache_cur = 0;
+  krwlock_init(&retcache_lock);
+  
   pidgen = 1;
-  krwlock_init(&plock);
+  krwlock_init(&_procsys_lock);
   
   memset(used_processes, 0, sizeof(used_processes));
   memset(processes, 0, sizeof(processes));
@@ -63,8 +74,10 @@ void process_initialize() {
   used_processes[0] = 1;
 }
 
-Process *process_from_pid(intptr_t pid) {
-  krwlock_rlock(&plock);
+Process *process_from_pid(intptr_t pid, int ignorelock) {
+  if (!ignorelock) {
+    krwlock_rlock(&_procsys_lock);
+  }
   
   Process *p = NULL;
   for (p=running_processes.first; p; p=p->next) {
@@ -73,7 +86,9 @@ Process *process_from_pid(intptr_t pid) {
     }
   }
   
-  krwlock_unrlock(&plock);
+  if (!ignorelock) {
+    krwlock_unrlock(&_procsys_lock);
+  }
   
   return p;
 }
@@ -100,7 +115,7 @@ int process_get_stderr(Process *p) {
 }
 
 static Process *alloc_process() {
-  krwlock_lock(&plock);
+  krwlock_lock(&_procsys_lock);
   
   Process *p = NULL;
   int i = 0;
@@ -116,18 +131,18 @@ static Process *alloc_process() {
   }
   
   if (i == MAX_TASKS) {
-    krwlock_unlock(&plock);
+    krwlock_unlock(&_procsys_lock);
 
     e9printf("Hit maximum number of processes!\n");
     return NULL;
   }
   
-  krwlock_unlock(&plock);
+  krwlock_unlock(&_procsys_lock);
   return processes + i;
 }
 
 static void free_process(Process *p) {
-  krwlock_lock(&plock);
+  krwlock_lock(&_procsys_lock);
   int found = 0;
   
   for (int i=0; i<MAX_TASKS; i++) {
@@ -139,7 +154,7 @@ static void free_process(Process *p) {
   }
   
   if (!found) {
-    krwlock_unlock(&plock);
+    krwlock_unlock(&_procsys_lock);
   
     e9printf("FAILED TO FREE PROCESS STRUCT\n");
     return;
@@ -148,17 +163,19 @@ static void free_process(Process *p) {
   //clear p->used
   p->used = 0;
   
-  krwlock_unlock(&plock);
+  krwlock_unlock(&_procsys_lock);
 }
 
 //returns. . .pid?
 Process *spawn_process(const char *name, int argc, char **argv, int (*main)(int argc, char **argv)) {
-  krwlock_lock(&plock);
+  krwlock_lock(&_procsys_lock);
   
   Process *process = alloc_process(); //kmalloc(sizeof(Process));
 
   memset(process, 0, sizeof(Process));
 
+  krwlock_init(&process->resource_lock);
+  
   process->used = 1;
   process->retval = 0;
   process->stdin = 0; 
@@ -173,7 +190,7 @@ Process *spawn_process(const char *name, int argc, char **argv, int (*main)(int 
   
   strncpy(process->name, name, sizeof(process->name));
   
-  krwlock_unlock(&plock);
+  krwlock_unlock(&_procsys_lock);
   return process;
 }
 
@@ -198,15 +215,32 @@ int process_set_finish(Process *process, void *finishfunc) {
 }
 
 void _process_finish(int retval, int tid, int pid) {
-  krwlock_lock(&plock);
+  krwlock_lock(&_procsys_lock);
 
-  Process *p = process_from_pid(pid);
+  Process *p = process_from_pid(pid, 0);
 
+  int didlock = 0;
+  
+  if (have_interrupts()) {
+    didlock = 1;
+    krwlock_lock(&retcache_lock);
+  }
+  
+  //cache pid for if we need it later
+  retcache[retcache_cur++] = pid;
+  retcache[retcache_cur++] = retval;
+  retcache_cur = retcache_cur % (RETCACHE_SIZE*2);
+  //
+  
+  if (didlock) {
+    krwlock_unlock(&retcache_lock);
+  }
+  
   if (!p) {
     e9printf("    reval: %x, tid: %x, pid: %x\n", retval, tid, pid);
     e9printf("KERNEL ERROR: process_from_pid returned NULL!\n");
     
-    krwlock_unlock(&plock);
+    krwlock_unlock(&_procsys_lock);
     return;
   }
 
@@ -217,12 +251,12 @@ void _process_finish(int retval, int tid, int pid) {
 
   p->retval = retval;
 
-  krwlock_unlock(&plock);
+  krwlock_unlock(&_procsys_lock);
   p->finishfunc(retval, tid, pid);  
 }
 
 int process_start(Process *process) {
-  krwlock_lock(&plock);
+  krwlock_lock(&_procsys_lock);
   
   LinkNode *thread = kmalloc(sizeof(LinkNode));
   
@@ -247,7 +281,7 @@ int process_start(Process *process) {
   //e9printf("  finish: %x\n", _process_finish);
   //e9printf("  pid   : %x\n", process->pid);
   
-  krwlock_unlock(&plock);
+  krwlock_unlock(&_procsys_lock);
   
   thread->data = (void*) spawn_task(process->argc, process->argv, process->entryfunc, _process_finish, process);
   
@@ -255,10 +289,10 @@ int process_start(Process *process) {
 }
 
 int process_close(Process *process) {
-  krwlock_lock(&plock);
+  krwlock_lock(&_procsys_lock);
 
   if (process->state & PROC_ZOMBIE) {
-    krwlock_unlock(&plock);
+    krwlock_unlock(&_procsys_lock);
     return -1;
   }
 
@@ -273,7 +307,9 @@ int process_close(Process *process) {
   
   process->threads.first = process->threads.last = NULL;
   
-  //XXX do cleanup stuff!
+  //free any remaining allocated memory
+  pfreeall(process);
+  
   if (process->state & PROC_RUNNING) {
     klist_remove((List*)&running_processes, process);
   } else {
@@ -285,13 +321,13 @@ int process_close(Process *process) {
   
   free_process(process); //kfree(process);
   
-  krwlock_unlock(&plock);
+  krwlock_unlock(&_procsys_lock);
   
   return 0;
 }
 
 int print_procs(FILE *file) {
-  krwlock_rlock(&plock);
+  krwlock_rlock(&_procsys_lock);
   unsigned char **lines = NULL;
   int totline = 0, totused=0;
   
@@ -307,7 +343,7 @@ int print_procs(FILE *file) {
     
     lines[totline++] = buf;
   }
-  krwlock_unrlock(&plock);
+  krwlock_unrlock(&_procsys_lock);
   
   fprintf(file, "=========Running processes============\n");
   for (int i=0; i<totline; i++) {
@@ -332,7 +368,64 @@ int wait(int *stat_loc) {
   return 0;
 }
 
+static int _find_retval(int pid, int *pidout) {
+  int dolock = have_interrupts();
+  int ret, found=0;
+  
+  if (dolock) {
+    krwlock_rlock(&retcache_lock);
+  }
+  
+  for (int i=0; i<RETCACHE_SIZE; i++) {
+    int j = (retcache_cur - i*2 + RETCACHE_SIZE*2) % (RETCACHE_SIZE*2);
+    
+    if (retcache[j] == pid) {
+      ret = retcache[j+1];
+      found = 1;
+      
+      break;
+    }
+  }
+  
+  if (dolock) {
+    krwlock_unrlock(&retcache_lock);
+  }
+  
+  if (found)
+    *pidout = ret;
+  else
+    *pidout = 0;
+  
+  return !found ? -1 : 0;
+}
+
 int waitpid(int pid, int *stat_loc, int options) {
+  if (!stat_loc)
+    return -1;
+
+  Process *p = process_from_pid(pid, 0);
+  
+  if (!p) {
+    return _find_retval(pid, stat_loc);
+  }
+  
+  while (p->state & PROC_RUNNING) {
+  }
+  
+  int ret = -1;
+  
+  asm("CLI");
+  
+  if ((p = process_from_pid(pid, 1))) {
+    ret = p->retval;
+  } else {
+    asm("STI");
+    return _find_retval(pid, stat_loc);
+  }
+  
+  asm("STI");
+  
+  *stat_loc = ret;
   return 0;
 }
 

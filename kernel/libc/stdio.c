@@ -3,14 +3,24 @@
 
 #include "stdio.h"
 #include "../drivers/fs/fs_file.h"
-#include "kmalloc.h"
+
+#ifndef __KERNEL_BUILD__
+  #define pmalloc _pmalloc
+  #define pfree _pfree
+#endif
+
+extern void *pmalloc(size_t size);
+extern void pfree(void *ptr);
 
 void *_malloc(size_t size, char *file, int line) {
-  return _kmalloc(size, file, line);
+  return pmalloc(size);
 }
 
 void _free(void *ptr, char *file, int line) {
-  _kfree(ptr, file, line);
+  if (!ptr)
+    return;
+  
+  pfree(ptr);
 }
 
 FILE *fopen(char *path, char *mode) {
@@ -116,3 +126,23 @@ int fputc(int ch, FILE *file) {
   
   return written ? 0 : EOF;
 }
+
+int fflush(FILE *file) {
+  if (!file) {
+    return -1;
+  }
+  
+  return flush(file->fd);
+}
+
+#ifndef __KERNEL_BUILD__
+int printf(char *fmt, ...) {
+  va_list vl;
+  
+  va_start(vl, fmt);
+  int ret = vfprintf(stdout, fmt, vl);
+  va_end(vl);
+  
+  return ret;
+}
+#endif
