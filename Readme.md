@@ -7,3 +7,12 @@ The name is not a joke.  Unsecure is not meant to
 be used in production environments, ever.  The goal
 is to probe the trade-off between performance and
 security on modern hardware.
+
+# Compiling
+
+##Requirements:
+* NASM
+* Grub2
+* Linux (you can run it inside a VM if necassary, e.g. VirtualBox)
+
+#
