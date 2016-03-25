@@ -27,7 +27,7 @@ From a console, do:
 ```source /usr/local/cross/build.sh```
 
 Then from the repository checkout directory, do:
-```./build.sh```
+`./build.sh`
 
 It should do a bunch of steps, and finally spit out
 a cdrom iso, grub.iso, that you can boot (from a VM!)
