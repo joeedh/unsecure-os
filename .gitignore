@@ -1,0 +1,10 @@
+*.o
+*.bin
+ttytester/win32tester/Debug
+ttytester/win32tester/QR*
+ttytester/win32tester/ipch
+kernel/libc/regex/*.exe
+kernel/libc/regex/*.o
+kernel/libc/regex/*.stackdump
+install/*
+apps/usr

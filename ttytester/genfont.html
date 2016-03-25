@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html>
+<head><title>tty fontgen</title></head>
+<script type="application/javascript">
+
+var SIZEX = 10
+var SIZEY = 10
+
+window.init = function() {
+  var canvas = document.getElementById("canvas2d");
+  console.log("init");
+  
+  canvas.width = SIZEX*12
+  canvas.height = SIZEX*10
+  canvas.style["background"] = "rgba(255,255,255,255)";
+  
+  var g = canvas.getContext("2d");
+  
+  g.fillStyle = "white";
+  g.rect(0, 0, canvas.width, canvas.height);
+  g.fillStyle = "black";
+  
+  //g.font = "normal normal 20px Verdana";
+  g.font=""+(SIZEX+2)+"px Courier New";
+  
+  cellx = canvas.width / SIZEX;
+  celly = canvas.height / SIZEY;
+  var toti = cellx*celly;
+  
+  g.beginPath()
+  g.strokeStyle = "black"
+  
+  for (var i=0; i<toti; i++) {
+    var x = i % cellx, y = ~~(i / cellx);
+    var sx = x*SIZEX, sy = y*SIZEY;
+
+    g.rect(sx, sy, SIZEX, SIZEY);    
+  }
+  //g.stroke();
+  
+  console.log("text");
+  console.log("width: ", canvas.width, "height:", canvas.height);
+  var start_off = 31;
+  
+  g.fillStyle = g.strokeStyle = "black";
+  g.beginPath();
+  for (var i=0; i<toti; i++) {
+    var x = i % cellx, y = ~~(i / cellx);
+    var sx = x*SIZEX, sy = y*SIZEY;
+    
+    var c = "?"
+    if (i > start_off) {
+      c = String.fromCharCode(i)
+    } else {
+      c = String.fromCharCode(i+255) //make randomish characters
+    }
+    var ci = i + start_off
+    var c = String.fromCharCode(ci);
+    
+    //if (i > 255)
+    //  break;
+
+    g.fillText(c, sx+2, sy+SIZEX);
+  }
+  
+  g.fill();
+  
+  window.g = g;
+  window.canvas = canvas;
+  
+  var data = g.getImageData(0, 0, canvas.width, canvas.height);
+  console.log("data:", data);
+  
+  var ilen = data.width*data.height;
+  var buf = "#define WIDTH " + data.width + "\n";
+  buf += "#define HEIGHT " + data.height + "\n";
+  buf += "#define CHAR_OFFSET " + start_off + "\n";
+  buf += "#define CELLWID " + SIZEX + "\n";
+  buf += "#define CELLHGT " + SIZEY + "\n";
+  
+  buf += "\n//x/y locations for each white pixel in image.  everything else is black.\n";
+  buf += "unsigned char font_locs[FINALSIZE] = {\n"
+  var c = 0;
+  
+  function writehex(byte) {
+    var rs = byte.toString(16);
+    while (rs.length < 2) {
+      rs = "0" + rs;
+    }
+    
+    return rs;
+  }
+  
+  for (var i=0; i<data.data.length; i += 4) {
+    var d = data.data[i+3];
+    
+    var di = i/4;
+    var x = di % data.width, y = ~~(di / data.width);
+    
+    //buf += "" + ~~(9.0*d/255.0) //d < 127 ? "0" : "1";
+    //buf += d < 127 ? "0" : "1";
+    if (d > 30) {
+      buf += x + "," + y + ","; //writehex(x) + "," + writehex(y) + ","
+      c++;
+    
+      if (c % 20 == 0) {
+        buf += "\n"
+      }
+    }
+  }
+  buf += "\n};\n\n"
+  
+  buf = buf.replace("FINALSIZE", c*2);
+  
+  g.beginPath();
+  g.rect(0, 0, canvas.width, canvas.height);
+  g.fill();
+  
+  g.putImageData(data, 0, 0);
+  console.log(buf);//.slice(0, 800));
+}
+
+</script>
+</head>
+<body onload="init();">
+<div>
+<canvas id="canvas2d">
+</canvas>
+</div>
+</body>
+</html>
