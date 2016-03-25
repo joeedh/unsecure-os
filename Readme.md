@@ -30,8 +30,7 @@ Then from the repository checkout directory, do:
 `./build.sh`
 
 It should do a bunch of steps, and finally spit out
-a cdrom iso, grub.iso, that you can boot (from a VM!)
-from.
+a cdrom iso, grub.iso, that you can boot with (from a VM!).
 
 ## Setting up Bochs
 If you use Bochs, you can turn on the so-called "port E9 hack"
