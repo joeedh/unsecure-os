@@ -1,12 +1,15 @@
 #!/usr/bin/env bash
 
+#ensure build folder exists
+mkdir -p build
+
 rm *.o 2> /dev/null
 rm build/crt.o 2> /dev/null
 rm build/user*.o 2> /dev/null 
 rm build/kernel.bin 2> /dev/null
 
-./install-userland.sh
 ./build-userland.sh
+./install-userland.sh
 ./package-tinyext2.sh
 
 echo "generate _tinyext2_fs.c. . ."
