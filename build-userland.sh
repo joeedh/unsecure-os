@@ -9,8 +9,8 @@ export CC="i686-elf-gcc $CFLAGS -c "
 
 echo "compiling userland. . ."
 
-rm install/usr/lib/libc.a
-rm install/bin/ls
+rm install/usr/lib/libc.a 2> /dev/null
+rm install/bin/ls 2> /dev/null
 
 $CC kernel/libc/crt0.c -o build/crt0.o
 $CC kernel/libc/libc.c -o build/user_libc.o

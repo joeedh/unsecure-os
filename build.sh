@@ -3,11 +3,16 @@
 #ensure build folder exists
 mkdir -p build
 
+#ensure mount folder for tinyext2.fs exists
+mkdir -p mnt
+
+#remove old build files
 rm *.o 2> /dev/null
 rm build/crt.o 2> /dev/null
 rm build/user*.o 2> /dev/null 
 rm build/kernel.bin 2> /dev/null
 
+./setup-userland.sh
 ./build-userland.sh
 ./install-userland.sh
 ./package-tinyext2.sh
