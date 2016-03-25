@@ -12,6 +12,13 @@
 
 #include "process.h"
 
+#define TASK_DEBUG
+#ifdef TASK_DEBUG
+  #define taskdebug(...) e9printf(__VA_ARGS__)
+#else
+  #define taskdebug(...)
+#endif
+
 static RWLock tlock = RWLOCK_INIT;
 
 #ifdef LOCK_DEBUG
@@ -32,6 +39,7 @@ const unsigned int task_switch_granularity = 10;
 
 extern void __initMainTask();
 extern void *stack_top;
+static Task *task_get(int tid);
 
 void tasks_initialize() {
   krwlock_init(&tlock);
@@ -50,14 +58,22 @@ void tasks_initialize() {
   
   task->next = task->prev = task;
   task->sleep = task_switch_granularity;
+  task->flag = TASK_ALIVE|TASK_SCHEDULED;
   
   //set main idle task
   k_curtaskp = k_lasttaskp = task;
   
-  //sets task->head
-  __initMainTask();
+  e9printf("    calling __initMainTask\n");
   
-  task->flag = TASK_ALIVE|TASK_SCHEDULED;
+  //sets task->head
+  asm("pusha");
+  asm("pushf");
+  __initMainTask();
+  asm("popf");
+  asm("popa");
+  
+  
+  e9printf("    done.\n");
 }
 
 static unsigned int alloc_stack() {
@@ -87,6 +103,36 @@ static unsigned int alloc_stack() {
 void _null_finishcb(int retval, int tid, int pid) {
 }
 
+void _e9print_task_stack(Task *task) {
+  e9printf("task: %x\n", task);
+  e9printf("task->head: %x\n", task->head);
+  e9printf("stack:\n");
+
+  unsigned int *stack = (unsigned int*) task->head;
+  for (int i=0; i<17; i++) {
+    e9printf("%d:  %x\n", i, stack[i]);
+  }
+}
+
+extern void kcli_main();
+
+void isr0_debug() {
+  extern volatile int _keydriver_isr0_flag;
+  
+  if (_keydriver_isr0_flag) {
+    _keydriver_isr0_flag = 0;
+    
+    e9printf("key down message in isr0 handler!\n");
+    
+    e9printf("kcli_main: %p\n", kcli_main);
+    e9printf("===========CURRENT===========\n");
+    _e9print_task_stack(k_curtaskp);
+    
+    e9printf("\n-------------NEXT------------\n");
+    _e9print_task_stack(k_curtaskp->next);
+  }
+}
+
 void free_stack(unsigned long stack) {
   int found = 0;
   
@@ -108,14 +154,14 @@ void task_cleanup(volatile Task *task, int retval) {
   task->finishcb(retval, task->tid, task->pid);
   
   if (task->flag == TASK_DEAD) {
-    asm("STI");
+    interrupts_enable();
     return;
   }
   
   int iscurrent = task == k_curtaskp;
   
   //krwlock_lock(&tlock);
-  asm("CLI");
+  interrupts_disable();
   
   //take out of schedule loop
   task->tid = 0; //clear tid
@@ -127,19 +173,21 @@ void task_cleanup(volatile Task *task, int retval) {
   
   if (iscurrent) {
     free_stack((unsigned long) task->stack);
-    asm("STI");
+    interrupts_enable();
     
     while (1) { //wait for switch
     }
   } else {
     free_stack((unsigned long) task->stack);
-    asm("STI");
+    interrupts_enable();
   }
+  
+  interrupts_enable();
 }
 //*/
 
 void task_destroy(int tid, int retval, int wait_if_inside) {
-  asm("CLI");
+  interrupts_disable();
   
   Task *task = task_get(tid);
   
@@ -152,10 +200,10 @@ void task_destroy(int tid, int retval, int wait_if_inside) {
     
     task_cleanup(task, retval);
     
-    asm("STI");
+    interrupts_enable();
     
     //we're in the killed task? wait for task switch
-    if (wait_if_inside && task == k_curtaskp) { 
+    if (task == k_curtaskp) { 
       while (1) {
       }
     }
@@ -163,10 +211,9 @@ void task_destroy(int tid, int retval, int wait_if_inside) {
     return;
   }
   
-  asm("STI");
+  interrupts_enable();
 }
 
-extern void __initTask2(volatile unsigned int *stack, void *start, volatile Task *newtask);
 extern void __initTask3(void *start, Task *newtask);
 extern void __saveStack();
 
@@ -190,15 +237,16 @@ void wrapped_main(int argc, char **argv) {
 }
 
 void _task_cleanup() {
-  asm("CLI");
+  interrupts_disable();
 
   volatile Task *task = k_curtaskp;
   int retval = read_eax();
   
   task_cleanup(task, retval);
+  interrupts_enable();
 }
 
-Task *task_get(int tid) {
+static Task *task_get(int tid) {
   for (int i=0; i<MAX_TASKS; i++) {
     if (tasks[i].tid == tid) 
       return tasks + i;
@@ -209,8 +257,9 @@ Task *task_get(int tid) {
 
 int spawn_task(int argc, char **argv, int (*main)(int argc, char **argv),
                 void (*finishcb)(int retval, int tid, int pid), struct Process *proc) {
-  asm("cli");
-
+  interrupts_disable();
+  taskdebug("spawning task\n");
+  
   volatile Task *task = NULL;
   volatile unsigned int *stack;
   int i;
@@ -228,7 +277,7 @@ int spawn_task(int argc, char **argv, int (*main)(int argc, char **argv),
   
   if (!task) {
     kerror(0, "hit maximum task limit");
-    asm("sti");
+    interrupts_enable();
     return -1;
   }
   
@@ -278,8 +327,24 @@ int spawn_task(int argc, char **argv, int (*main)(int argc, char **argv),
   }
   //*/
 
-  //switch to task.  will re-enable interrupts
+  taskdebug("adding task %d to thread queue\n", tid);
+  
+  asm("push %eax");
+  asm("push %ebp");
+  asm("push %ecx");
+  asm("push %ebx");
   __initTask3(main, task);
+  asm("pop %ebx");
+  asm("pop %ecx");
+  asm("pop %ebp");
+  asm("pop %eax");
+
+  interrupts_enable();
+  
+  _e9print_task_stack(task);
+  e9printf("kcli_main: %x\n", kcli_main);
+  
+  taskdebug("task spawned successfuly\n");
   
   return tid;
 }

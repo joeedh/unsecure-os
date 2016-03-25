@@ -264,8 +264,6 @@ int system(const char *string) {
   int pid;
   
   if (posix_spawn(&pid, argv[0], NULL, NULL, argv, envp) != 0) {
-    int status;
-    
     kfree(newenvp);
     kfree(newargv);
     

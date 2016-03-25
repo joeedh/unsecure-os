@@ -6,7 +6,8 @@
 #include <stdarg.h>
 
 #include "libk.h"
- 
+#include "../io.h"
+
 /* Check if the compiler thinks we are targeting the wrong operating system. */
 #if defined(__linux__)
 #error "You are not using a cross-compiler, you will most certainly run into trouble"
@@ -172,7 +173,7 @@ void libk_initialize() {
 }
 
 int kerror(int code, char *message) {
-  asm("CLI");
+  interrupts_disable();
   
   //terminal_clear();
   

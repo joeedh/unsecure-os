@@ -126,17 +126,15 @@ uint16_t PIC_get_isr(void)
     return __pic_get_irq_reg(PIC_READ_ISR);
 }
 
-static inline int kprintinfo() {
-  stacktrace(kprintf);
+static inline int e9printinfo() {
+  stacktrace(e9printf);
   
-  kprintf("\n============================\n");
-  terminal_flush();
+  e9printf("\n============================\n");
   
-  kprintf("eax: %x, ecx: %x, esp: %x\n", read_eax(), read_ecx(), read_esp());
-  kprintf("ebp: %x, ebx: %x, eflags: %x\n", read_ebp(), read_ebx(), read_eflags());
-  kprintf("\ninstruction pointer: %x\n", get_eip);
-  kprintf("k_curtaskp: %x\n", k_curtaskp);
-  terminal_flush();
+  e9printf("eax: %x, ecx: %x, esp: %x\n", read_eax(), read_ecx(), read_esp());
+  e9printf("ebp: %x, ebx: %x, eflags: %x\n", read_ebp(), read_ebx(), read_eflags());
+  e9printf("\ninstruction pointer: %x\n", get_eip);
+  e9printf("k_curtaskp: %x\n", k_curtaskp);
   
   return 0;
 }
@@ -154,7 +152,7 @@ void _exc_handler##n(unsigned int flag) {\
 extern void exr_##n();\
 void _exc_handler##n(unsigned int flag) {\
   _cpu_exception_flag |= flag;\
-  kprintinfo();\
+  e9printinfo();\
   kerror(n, "Got exception " #n);\
 }
 
@@ -162,17 +160,17 @@ void _exc_handler##n(unsigned int flag) {\
 extern void exr_##n();\
 void _exc_handler##n(unsigned int flag) {\
   _cpu_exception_flag |= flag;\
-  kprintinfo();\
-  kprintf("====Got exception " #n "=====\n");\
+  e9printinfo();\
+  e9printf("====Got exception " #n "=====\n");\
 }
 
 DEATH_EXCEPTION(0); //divide by zero #DE
 
 EXC_HANDLE(1); //debug                       #DB
 EXC_HANDLE(2); //non-maskable interrupt      #NMI
-EXC_HANDLE(3); //breakpoint                  #BP
-EXC_HANDLE(4); //overflow                    #OF
-EXC_HANDLE(5); //bound-range error           #BR
+WARN_EXCEPTION(3); //breakpoint              #BP
+WARN_EXCEPTION(4); //overflow                #OF
+WARN_EXCEPTION(5); //bound-range error       #BR
 DEATH_EXCEPTION(6); //invalid opcode         #UD
 DEATH_EXCEPTION(7); //device not available   #NM
 WARN_EXCEPTION(8); //double fault            #DF
@@ -182,6 +180,10 @@ WARN_EXCEPTION(11); //segment not present    #NP
 WARN_EXCEPTION(12); //stack error            #SS
 DEATH_EXCEPTION(13); //general protection    #GP
 WARN_EXCEPTION(14); //page fault             #PF
+WARN_EXCEPTION(15); //reserved
+WARN_EXCEPTION(16); //x87 fpu except pending #MF
+WARN_EXCEPTION(17); //alignment error        #AC
+WARN_EXCEPTION(18); //machine check          #MC
 
 //there are only seven of these, so just define table here
 void *excptrs[] = {
@@ -199,7 +201,11 @@ void *excptrs[] = {
   exr_11,
   exr_12,
   exr_13,
-  //exr_14
+  exr_14,
+  exr_15,
+  exr_16,
+  exr_17,
+  exr_18
 };
 
 #define tot_excptrs 14 //((int)(sizeof(excptrs) / sizeof(void*)))
@@ -238,7 +244,7 @@ extern int tot_idtptrs;
 void interrupts_initialize() {
   inside_irq = 0;
   
-  asm("cli"); //disable interrupts
+  interrupts_disable(); //disable interrupts
   
   PIC_remap(PIC_REMAP_OFFSET, PIC_REMAP_OFFSET);
   

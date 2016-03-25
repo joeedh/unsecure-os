@@ -18,6 +18,23 @@
 #include "task.h"
 #include "../libc/libk.h"
 
+#if 1
+  #define _lock_safe_entry safe_entry
+  #define _lock_safe_exit safe_exit
+#else
+  static inline unsigned int _lock_safe_entry() {
+    unsigned int eflags = read_eflags();
+    asm("cli");
+    return eflags;
+  }
+
+  static inline void _lock_safe_exit(unsigned int eflags) {
+    if (eflags & (1<<9)) {
+      asm("STI");
+    }
+  }
+#endif
+
 #ifdef DEBUGSKIP
 #undef DEBUGSKIP
 #endif
@@ -52,12 +69,12 @@ typedef volatile struct Lock {
   #define klock_unlock(lock) _klock_unlock(lock, __FILE__, __LINE__)
   #define klock_clearlock(lock) _klock_clearlock(lock, __FILE__, __LINE__)
   #define LOCKDEBUG(name) if (lock->state) {\
-      {unsigned int _state = safe_entry();\
+      {unsigned int _state = _lock_safe_entry();\
       disable_all_locks = 1;\
       if (enable_klock_debug && !inside_irq) {\
         e9printf("%d: klock(" #name "): %s:%d\n", lock->state, _get_filename(file), line);\
       }\
-      disable_all_locks = 0; safe_exit(_state);}};
+      disable_all_locks = 0; _lock_safe_exit(_state);}};
 #else
   #define DEBUGSKIP
   #define DEBUG_ARGS
@@ -109,7 +126,7 @@ static inline void _klock_lock(Lock *lock DEBUG_ARGS) {
   #endif
   
   if (lock->state == 0) {
-    lock->owner = safe_entry();
+    lock->owner = _lock_safe_entry();
   }
   
   LOCKDEBUG(lock);
@@ -123,7 +140,7 @@ static inline void _klock_unlock(Lock *lock DEBUG_ARGS) {
   if (lock->owner != 0 && --lock->state <= 0) {
     lock->owner = 0;
     lock->state = 0;
-    safe_exit(lock->owner);
+    _lock_safe_exit(lock->owner);
   }
   
   LOCKDEBUG(unlock);
@@ -135,13 +152,14 @@ static inline void _klock_clearlock(Lock *lock DEBUG_ARGS) {
   if (lock->owner != 0) {
     lock->owner = 0;
     lock->state = 0;
-    safe_exit(lock->owner);
+    _lock_safe_exit(lock->owner);
   }
   
   LOCKDEBUG(unlock);
 }
 
-#elif LOCKMETHOD == SPINLOCK
+/******************************** Spinlock ******************************/
+#elif LOCKMETHOD == SPINLOCK 
 #define LOCK_INIT {0,}
 
 static inline void _klock_init(Lock *lock DEBUG_ARGS) {
@@ -159,13 +177,13 @@ static inline void _klock_lock(Lock *lock DEBUG_ARGS) {
   volatile unsigned int tid = k_curtaskp->tid;
   
   #ifdef LOCK_DEBUG
-  unsigned int state1 = safe_entry();
+  unsigned int state1 = _lock_safe_entry();
   
   if (lock->state) {
     stacktrace(e9printf);
   }
   
-  safe_exit(state1);
+  _lock_safe_exit(state1);
   #endif
   
   LOCKDEBUG(lock);
@@ -186,10 +204,11 @@ restart:
     //asm("PAUSE");
   } while (lock->owner != 0);
   
-  volatile unsigned int state = safe_entry();
+  lock->owner = tid;
+  //volatile unsigned int state = _lock_safe_entry();
   
-  if (lock->owner != 0) {
-    safe_exit(state);
+  if (lock->owner != tid) {
+    //_lock_safe_exit(state);
     goto restart;
   }
   
@@ -201,7 +220,7 @@ restart:
   lock->owner = tid;
   lock->state = 1;
   
-  safe_exit(state);
+  //_lock_safe_exit(state);
 }
 
 static inline void _klock_unlock(Lock *lock DEBUG_ARGS) {
@@ -214,9 +233,9 @@ static inline void _klock_unlock(Lock *lock DEBUG_ARGS) {
   }
   
   if (!--lock->state) {
-    volatile unsigned int state = safe_entry();
+    //volatile unsigned int state = _lock_safe_entry();
     lock->owner = lock->state = 0;
-    safe_exit(state);
+    //_lock_safe_exit(state);
   }
   
   LOCKDEBUG(unlock);
@@ -228,12 +247,12 @@ static inline void _klock_clearlock(Lock *lock DEBUG_ARGS) {
   volatile unsigned int tid = k_curtaskp->tid;
   
   if (lock->owner != tid) {
-    return; //we don't own the lock
+    return; //we don't own the lock!
   }
   
-  volatile unsigned int state = safe_entry();
+  //volatile unsigned int state = _lock_safe_entry();
   lock->state = lock->owner = 0;
-  safe_exit(state);
+  //_lock_safe_exit(state);
   
   LOCKDEBUG(unlock);
 }

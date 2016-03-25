@@ -15,7 +15,8 @@ python datatoc.py tinyext2.fs _tinyext2_fs _tinyext2_fs.c
 python datatoc.py install/bin/ls _test_elfdata _test_elfdata.c
 
 echo "assemble NASM code. . ."
-nasm kernel/core_x86.nasm -felf32 -o core_x86.o
+./kernel/asm/build.sh
+#nasm -felf32 kernel/asm/core_x86.nasm -o core_x86.o
 
 #-fno-asynchronous-unwind-tables
 #symbol_table_gen.o
@@ -29,7 +30,7 @@ i686-elf-gcc $CFLAGS _test_elfdata.c _tinyext2_fs.c kernel/syscalls/*.c kernel/l
              
 
 echo "link kernel. . ."
-i686-elf-gcc -g -DINIT_SECTION_ASM_OP=.init -fno-omit-frame-pointer -funsigned-char -T linker.ld -o build/kernel.bin core_x86.o timer.o gdt.o kernel_main.o bootinfo.o \
+i686-elf-gcc -DINIT_SECTION_ASM_OP=.init -fno-omit-frame-pointer -funsigned-char -T linker.ld -o build/kernel.bin core_x86.o timer.o gdt.o kernel_main.o bootinfo.o \
                                              interrupt_pointers.o interrupts.o libk.o list.o task.o process.o\
                                              kmalloc.o printf.o tty.o keyboard.o memblock.o memory_file.o mempipe.o \
                                              ext2.o blockdevice.o libc.o syscalls.o sprintf.o \

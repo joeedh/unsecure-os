@@ -20,6 +20,14 @@
 #include "../task/rwlock.h"
 #include "../timer.h"
 
+#define PROCESS_DEBUG
+
+#ifdef PROCESS_DEBUG
+  #define procdebug(...) e9printf(__VA_ARGS__)
+#else
+  #define procdebug(...)
+#endif
+
 List running_processes, finishing_processes;
 volatile unsigned int pidgen;
 
@@ -168,6 +176,8 @@ static void free_process(Process *p) {
 
 //returns. . .pid?
 Process *spawn_process(const char *name, int argc, char **argv, int (*main)(int argc, char **argv)) {
+  procdebug("creating new process\n");
+  
   krwlock_lock(&_procsys_lock);
   
   Process *process = alloc_process(); //kmalloc(sizeof(Process));
@@ -217,6 +227,8 @@ int process_set_finish(Process *process, void *finishfunc) {
 void _process_finish(int retval, int tid, int pid) {
   krwlock_lock(&_procsys_lock);
 
+  procdebug("process finish: retval: %d, tid: %d, pid: %d\n", retval, tid, pid);
+  
   Process *p = process_from_pid(pid, 0);
 
   int didlock = 0;
@@ -258,6 +270,8 @@ void _process_finish(int retval, int tid, int pid) {
 int process_start(Process *process) {
   krwlock_lock(&_procsys_lock);
   
+  procdebug("starting process. . .\n");
+  
   LinkNode *thread = kmalloc(sizeof(LinkNode));
   
   if (process->stdin == 0) {
@@ -283,6 +297,7 @@ int process_start(Process *process) {
   
   krwlock_unlock(&_procsys_lock);
   
+  procdebug("spawning process task. . .\n");
   thread->data = (void*) spawn_task(process->argc, process->argv, process->entryfunc, _process_finish, process);
   
   return 0;
@@ -414,16 +429,16 @@ int waitpid(int pid, int *stat_loc, int options) {
   
   int ret = -1;
   
-  asm("CLI");
+  interrupts_disable();
   
   if ((p = process_from_pid(pid, 1))) {
     ret = p->retval;
   } else {
-    asm("STI");
+    interrupts_enable();
     return _find_retval(pid, stat_loc);
   }
   
-  asm("STI");
+  interrupts_enable();
   
   *stat_loc = ret;
   return 0;

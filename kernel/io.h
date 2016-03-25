@@ -12,25 +12,64 @@
 #error "You are not using a cross-compiler, you will most certainly run into trouble"
 #endif
 
-extern volatile unsigned int _cpu_exception_flag;
+#include "libc/libk.h"
 
 extern unsigned int read_eflags();
+
+static inline void _interrupts_disable(char *file, int line) {
+  asm("CLI");
+  e9printf("cli: %s:%d\n", file, line);
+}
+
+static inline void _interrupts_enable(char *file, int line) {
+  e9printf("sti1(%x): %s:%d\n", read_eflags() & (1<<9), file, line);
+  asm("STI");
+  e9printf("  sti2(%x): %s:%d\n", read_eflags() & (1<<9), file, line);
+}
+
+//#define interrupts_disable() _interrupts_disable(__FILE__, __LINE__);
+//#define interrupts_enable() _interrupts_enable(__FILE__, __LINE__);
+
+#define _CRED ('r' | (4 << 8) | (4<<12))
+#define _CGRE ('g' | (2 << 8) | (2<<12))
+
+#define _isetclr(clr) ((uint16_t*) 0xB8000)[0] = clr
+
+#define interrupts_disable() {_isetclr(_CRED); e9printf("cli: %s:%d\n", __FILE__, __LINE__); asm("CLI");}
+#define interrupts_enable() {_isetclr(_CGRE); e9printf("sti: %s:%d\n", __FILE__, __LINE__); asm("STI");}
+
+extern volatile unsigned int _cpu_exception_flag;
+
 extern int get_eip();
 
 //disables interrupts and returns state used to reenable later (if they were already enabled)
-static inline unsigned int safe_entry() {
+static inline unsigned int _safe_entry(unsigned char *file, int line) {
   unsigned int eflags = read_eflags();
+  e9printf("safe_entry(%x): %s:%d\n", eflags & (1<<9), file, line);
+  
   asm("cli");
   return eflags;
 }
 
 //pair of safe_entry
-static inline void safe_exit(unsigned int eflags) {
+static inline void _safe_exit(unsigned int eflags, unsigned char *file, int line) {
+  e9printf("safe_exit(%x): %s:%d\n", eflags & (1<<9), file, line);
+  
+  if (eflags & (1<<9)) {
+    asm("STI");
+  }
+  
+  
+  /*
   //restore interrupt flags (by restoring eflags)
   asm( "push %0\n\t"
        "popf\n\t"
         ::"r"(eflags) );
+  */
 }
+
+#define safe_entry() _safe_entry(__FILE__, __LINE__)
+#define safe_exit(state) _safe_exit(state, __FILE__, __LINE__)
 
 static inline int have_interrupts() {
   int eflags = read_eflags();

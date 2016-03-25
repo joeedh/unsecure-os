@@ -126,7 +126,7 @@ extern void isr_end();
 extern void tss_stack_top();
 
 void gdt_tss_callback() {
-  kerror(0, "TSS callback executed");
+  e9printf("TSS callback executed!\n");
   asm("hlt");
 }
 

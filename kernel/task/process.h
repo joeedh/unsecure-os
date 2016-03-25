@@ -16,6 +16,7 @@ enum {
   PROC_ZOMBIE = 2
 };
 
+//keep in sync with PROCESS_SIZE in asm/definitions.nasm!
 typedef struct Process {
   struct Process *next, *prev;
   
@@ -24,7 +25,7 @@ typedef struct Process {
   char calling_path[32];
   char working_path[256];
   
-  volatile void *entryfunc;
+  int (*entryfunc)(int argc, char **argv);
   void (*finishfunc)(int retval, int tid, int pid);
   
   int argc;

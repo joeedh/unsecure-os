@@ -17,6 +17,8 @@
 #include "../../libc/ctype.h"
 #include "../../drivers/tty/tty.h"
 #include "../../task/lock.h"
+#include "../../task/task.h"
+#include "../../task/process.h"
 
 /*
 typematic command byte:
@@ -81,9 +83,12 @@ void keyboard_send_command(int command) {
 
 volatile unsigned char _last_tty_debug_chr = 0;
 
+volatile int _keydriver_isr0_flag = 0;
+
 void _isr_handler1() {
-  //volatile unsigned int state = safe_entry();
-  asm("CLI");
+  volatile unsigned int state = safe_entry();
+  //interrupts_disable();
+  
   volatile unsigned char code=0, lastcode=0;
   
   do {
@@ -116,6 +121,22 @@ void _isr_handler1() {
     if (code != _last_tty_debug_chr) {
       //terminal_set_debug(DEBUG_KEY, code, COLOR_LIGHT_BLUE);
       terminal_set_idebug(DEBUG_KEY, 5, code, COLOR_LIGHT_BLUE);
+      e9printf("got a key! %d\n", code);
+      
+      _keydriver_isr0_flag = 1;
+      /*
+      Task *nexttask = k_curtaskp;
+      
+      e9printf("nexttask: %x\n", nexttask);
+      e9printf("nexttask->head: %x\n", nexttask->head);
+      e9printf("stack:\n");
+
+      unsigned int *stack = (unsigned int*) nexttask->head;
+      for (int i=0; i<17; i++) {
+        e9printf("%d:  %x\n", i, stack[i]);
+      }
+      
+      //*/      
       
       _last_tty_debug_chr = code;
     }
@@ -127,8 +148,8 @@ void _isr_handler1() {
     lastcode = code;
   } while (code != lastcode && kb_queue_b < QUEUESIZE-1);
   
-  asm("STI");
-  //safe_exit(state);
+  //interrupts_enable();
+  safe_exit(state);
 }
 
 static int keyboard_handle_mods(int c) {
@@ -362,7 +383,8 @@ void keyboard_post_irq_enable() {
   unsigned short code;
   
   keyboard_send_command(CMD_RESTORE_DEFAULTS);
-
+  io_wait();
+  
   for (int i=0; i<50; i++) {
     code = inb(0x60);
     
@@ -371,7 +393,7 @@ void keyboard_post_irq_enable() {
     }
     
     if (code != lastcode && i > 0) {
-      kprintf("%d: got code: %x\n", count, code);
+      e9printf("KBIRQPOST:  %d: got code: %x\n", count, code);
       lastcode = code;
       count = 0;
     }
@@ -379,7 +401,7 @@ void keyboard_post_irq_enable() {
     count++;
   }
   
-  kprintf("%d: got code: %x\n", count, code);
+  e9printf("KBIRQPOST2: %d: got code: %x\n", count, code);
   lastcode = code;
   count = 0;
 }

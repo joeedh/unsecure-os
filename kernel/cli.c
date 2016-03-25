@@ -158,19 +158,19 @@ int ls_test_command(int argc, char **argv) {
   int fd = process_get_stdout(self);
   FILE _file = {fd}, *stdout = &_file;
   
-  fprintf(stdout, "argc: %d, argv: %x\n", argc, argv);
+  e9printf("argc: %d, argv: %x\n", argc, argv);
   
   if (argc < 2) {
     fprintf(stdout, "missing argument\n");
     return -1;
   }//*/
   
+  //for (int i=0; i<argc; i++) {
+  //  e9printf("%s ", argv[i]);
+  //}
+  //e9printf("\n");
+
   normpath(argv[1], strlen(argv[1])+1);
-  
-  for (int i=0; i<argc; i++) {
-    fprintf(stdout, "%s ", argv[i]);
-  }
-  fprintf(stdout, "\n");
   
   DIR *dir = opendir(argv[1]);
   struct dirent *entry;
@@ -238,6 +238,7 @@ int kcli_printline(FILE *stdout, char *curworkingdir) {
 
 int kcli_exec(char *name, int argc, char **argv, int (*main)(int argc, char **argv), int wait) 
 {
+  asm("STI");
   //uintptr_t addr = (uintptr_t)main;
   
   //return -1; //XXX
@@ -343,11 +344,10 @@ int kcli_changedir(FILE *stdout, const char *commandbuf, char* curworkingdir) {
 }
 
 int kcli_main(int argc, char **argv) {
-  //int *nullptr = 0x1;
-  //*nullptr = 0x0; 
+  e9printf("Started kcli_main\n");
   
-  kprintf("Started kcli_main\n");
-  terminal_flush();
+  //while (1) {
+  //}
   
   unsigned char commandbuf[2048];
   int commandlen = 0;

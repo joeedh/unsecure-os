@@ -106,6 +106,13 @@ void test_rootfs() {
 }
 
 void startup_kernel(void *bootinfo1) {
+  e9printf("starting kernel.  bootinfo: %p . .\n", bootinfo1);
+  e9printf("  sizeof(void*): %d, sizeof(int): %d, sizeof(long): %d\n", 
+               (int)sizeof(void*), (int)sizeof(int), (int)sizeof(long));
+  e9printf("  sizeof(Process): %d, sizeof(Task): %d\n", sizeof(Process), sizeof(Task));
+  //while (1) {
+  //}
+  
   _cpu_exception_flag = 0;
   rootfs = NULL;
   
@@ -113,43 +120,61 @@ void startup_kernel(void *bootinfo1) {
   
   enable_klock_debug = 0;
   
+  e9printf("initializing gdt. . .\n");
   gdt_initialize();
   libk_initialize();
-
+  
   /* Initialize terminal interface */
+  e9printf("initializing multitasking. . .\n");
+
+  e9printf("  timer. . .\n");
   timer_initialize();
+  e9printf("  tasks. . .\n");
   tasks_initialize();
+  e9printf("  process. . .\n");
   process_initialize();
 
+  e9printf("initializing terminal. . .\n");
   terminal_initialize();
   
+  /* keyboard */
+  e9printf("initializing keyboard. . .\n");
+  keyboard_initialize();
+  
+  e9printf("initializing interrupts. . .\n");
   kprintf("\ninitializing interrupts. . .\n");
   
   interrupts_initialize();
+  e9printf("flush pending keyboard data. . .\n");
   keyboard_post_irq_enable();
+  io_wait();
 
+  e9printf("parsing boot info. . .\n");
   parse_bootinfo(bootinfo1);
   kmalloc_init_with_holes();
   
-  kprintf("initializing pci. . .\n");
+  e9printf("initializing pci. . .\n");
   pci_initialize();
-  
-  /* keyboard */
-  keyboard_initialize();
 
+  e9printf("testing kmalloc. . .\n");
   test_kmalloc();
 
+  e9printf("initializing filesystem. . .\n");
   filesystem_initialize();
   tty_file_initialize();
   
   //kprintf("\nmounting file system. . .\n");
+  e9printf("mounting root filesystem. . .\n");
   setup_root();
   
-  asm("STI");
-  //kprintf("\ntesting file system code. . .\n");
+  interrupts_enable();
+  e9printf("\ntesting file system code. . .\n");
   test_rootfs();
   
+  e9printf("kernel startup complete.\n");
   kprintf("Kernel started\n Exception flag: %d\n", _cpu_exception_flag);
+  
+  debug_check_interrupts();
 }
 
 int kernel_task1(int argc, char **argv);
@@ -178,8 +203,9 @@ void test_task_finish_finish(int ret, int tid, int pid) {
 
 extern void *_bootinfo;
 
+#if 0
 void test_examine_far_call_stack() {
-  asm("CLI");
+  interrupts_disable();
   
   unsigned char tmp[256];
   unsigned char *head = &tmp[200];
@@ -212,6 +238,7 @@ void test_examine_far_call_stack() {
   kprintf(" %x %x %x   %x %x\n", tail[5], tail[6], tail[7], tail[8], tail[9]);
   kprintf(": %x %x %x\n", itail[0], itail[1], itail[2]);
 }
+#endif
 
 void kernel_main(void *bootinfo1) {
   _bootinfo = bootinfo1;
@@ -223,7 +250,7 @@ void kernel_main(void *bootinfo1) {
   //}
   
   /*
-  asm("CLI");
+  interrupts_disable();
   while (1) {
   }
   return;
@@ -237,12 +264,12 @@ void kernel_main(void *bootinfo1) {
   
   //test_kmalloc();
   
-  char *argv[] = {"yay", "one", "two", "three"};
-  Process *proc = spawn_process("sh", 4, argv, kcli_main);
+  //char *argv[] = {"yay", "one", "two", "three"};
+  Process *proc = spawn_process("sh", 1, NULL, kcli_main); //4, argv, kcli_main);
   process_start(proc);
   
   //paranoia check to ensure interrupts are now enabled
-  asm("STI");
+  interrupts_enable();
   
   kprintf("Started task!\n");
   
@@ -252,11 +279,12 @@ void kernel_main(void *bootinfo1) {
   unsigned int counter = 0;
   
   debug_check_interrupts();
+  interrupts_enable();
   
   //kprintf("k_totaltasks: %d\n", k_totaltasks);
   while (1) {
     //asm("PAUSE");
-    //debug_check_interrupts();
+    debug_check_interrupts();
     
     continue;
     

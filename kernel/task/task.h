@@ -47,7 +47,7 @@ void next_task();
 
 struct Process;
 
-Task *task_get(int tid);
+//Task *task_get(int tid);
 void task_destroy(int tid, int retval, int wait_if_inside);
 void task_switch(volatile void *stack);
 int spawn_task(int argc, char **argv, int (*main)(int argc, char **argv),
@@ -64,7 +64,7 @@ extern volatile unsigned int kernel_tick;
 static inline void task_sleep(unsigned int ms) {
   //asm("cli");
   //k_curtaskp->sleep = ms;
-  //asm("sti");
+  //interrupts_enable();
   
   /*
   asm("cli");
@@ -74,7 +74,7 @@ static inline void task_sleep(unsigned int ms) {
   
   //asm("int 0x0");
   
-  asm("sti");
+  interrupts_enable();
   //*/
 }
 

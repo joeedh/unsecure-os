@@ -21,11 +21,13 @@ void interrupts_initialize();
 extern volatile unsigned int inside_irq;
 
 static inline void debug_check_interrupts() {
+  //*
   unsigned int state = read_eflags();
   if (!(state & (1<<9))) {
-    kprintf("interrupts were DISABLED!!!!!\n");
-    asm("STI");
+    kprintf("interrupts are DISABLED!!!!!\n");
+    //interrupts_enable();
   }
+  //*/
 }
 
 //well. . .this is a diagnostic structure anyway,

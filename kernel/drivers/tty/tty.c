@@ -376,11 +376,14 @@ void tty_flip(TTYBuffer *tty) {
   for (int _i=0; _i<VGA_HEIGHT; _i++) {
     int i = _i;
     int j = (_i + scroll) % tty->height;
-  while (j < 0) {
-    j += tty->height;
-  }
-
     
+    while (j < 0) {
+      j += tty->height;
+    }
+
+    if (i == 0) {
+      continue; //first line reserved for real-time debug output
+    }
     smemcpy(tty->buffer_out + i*VGA_WIDTH, tty->buffer + j*VGA_WIDTH, VGA_WIDTH);
   }
 }

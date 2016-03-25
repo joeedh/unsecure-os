@@ -16,16 +16,12 @@ SECTIONS
 	.text BLOCK(4K) : ALIGN(4K)
 	{
 		*(.multiboot)
-    *(.code)
+		*(.gdt)
+    *(.irq.table)
 		*(.text)
+    *(.code)
 	}
   
-	/* Read-write data (uninitialized) */
-	.bss BLOCK(4K) : ALIGN(4K)
-  {
-		*(.irq.table)
-  }
-
 	/* Read-only data. */
 	.rodata BLOCK(4K) : ALIGN(4K)
 	{
@@ -41,9 +37,9 @@ SECTIONS
 	/* Read-write data (uninitialized) and stack */
 	.bss BLOCK(4K) : ALIGN(4K)
 	{
+		*(.bootstrap_stack)
 		*(COMMON)
 		*(.bss)
-		*(.bootstrap_stack)
 	}
   
   .data BLOCK(4K) : ALIGN(4K)
