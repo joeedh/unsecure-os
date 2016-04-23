@@ -24,11 +24,25 @@ static inline void debug_check_interrupts() {
   //*
   unsigned int state = read_eflags();
   if (!(state & (1<<9))) {
-    kprintf("interrupts are DISABLED!!!!!\n");
-    //interrupts_enable();
+    kprintf("interrupts were DISABLED!!!!!\n");
+    interrupts_enable();
   }
   //*/
 }
+
+typedef struct CR0 {
+  unsigned int protected_mode:1;      //0
+  unsigned int monitor_coprocessor:1; //1
+  unsigned int fpu_emulation:1;       //2
+  unsigned int task_switched:1;       //3 only applies to fpu? raises exception on next floating-point instruction
+  unsigned int extension_type:1;      //4
+  unsigned int numeric_error:11;      //5
+  unsigned int write_protect:2;       //16
+  unsigned int alignment_mask:11;     //18
+  unsigned int not_write_through:1;   //29
+  unsigned int cache_disable:1;       //30
+  unsigned int paging:1;              //31
+} CR0;
 
 //well. . .this is a diagnostic structure anyway,
 //so I don't feel like figuring out what I did wrong to

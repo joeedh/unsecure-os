@@ -17,210 +17,13 @@
 #include "libc/string.h"
 #include "drivers/keyboard/keyboard.h"
 #include "task/process.h"
+#include "task/process_management.h"
 #include "syscalls/syscalls.h"
 
 #include "libc/stdlib.h"
 
-enum {
-  STATE_RUNNING = 0,
-  STATE_WAITING = 1
-};
-
-static int CLI_state = 0;
-
-int cat_test_command(int argc, char **argv) {
-  Process *self = process_get_current();
-  int fd = process_get_stdout(self);
-  FILE _file = {fd}, *stdout = &_file;
-  
-  if (argc < 2) {
-    fprintf(stdout, "Error: need a file path\n");
-    return -1;
-  }
-  
-  FILE *file = fopen(argv[1], "rb");
-  fprintf(stdout, "file: %x\n", file);
-  
-  if (!file) {
-    fprintf(stdout, "Error: failed to open file\n");
-    return -1;
-  }
-  
-  char buf[256];
-  int read = fread(buf, sizeof(buf)-1, 1, file);
-  
-  fprintf(stdout, "\nread: %d\n", read);
-  
-  if (read > 0) {
-    buf[read] = 0;
-  } else {
-    buf[0] = 0;
-  }
-  buf[sizeof(buf)-1] = 0;
-  int len = strlen(buf);
-  
-  //filter out \r's
-  for (int i=0; i<len; i++) {
-    if (buf[i] == '\r') { //replace \r's with spaces
-      buf[i] = ' ';
-    }
-  }
-  
-  fprintf(stdout, "buf: %s\n", buf);
-  fprintf(stdout, "\nread: %d\n", read);
-  
-  return !file ? -1 : 0;
-}
-
-void elf_test(FILE *stdout, FILE *stderr) {
-#if 0
-  FILE *file = fopen("/bin/ls", "rb");
-  
-  fprintf(stdout, "elf test!\n");
-  
-  if (!file) {
-    fprintf(stdout, "Failed to open file\n");
-    return;
-  }
-  
-  struct stat st;
-  
-  if (fstat(file->fd, &st) != 0) {
-    fprintf(stdout, "Failed to stat file\n");
-    return;
-  }
-  
-  size_t size = st.st_msize;
-  
-  if (st.st_msize <= 0) {
-    fprintf(stdout, "bad st_msize: %d\n", st.st_msize);
-    return;
-  }
-  
-  fprintf(stdout, "size: %d\n", size);
-  unsigned char *data = kmalloc(size);
-  
-  //extern unsigned char _test_elfdata[];
-  //extern int _test_elfdata_size;
-  
-  int read = fread(data, size, 1, file);
-  
-  fprintf(stdout, "read: %d of %d\n\n", read, size);
-  fprintf(stdout, "read size: %d\n", size);
-  //fprintf(stdout, "test size: %d\n", _test_elfdata_size);
-  //fprintf(stdout, "memcmp result: %d\n", memcmp(data, _test_elfdata, _test_elfdata_size));
-  
-  //fprintf(stdout, "%c%c%c%c%c\n", data[0], data[1], data[2], data[3], data[4]);
-  //data = _test_elfdata;
-  //size = _test_elfdata_size;
-  
-  ElfFile *elf = elfloader_load(data, size);
-  unsigned char *ret = elfloader_instantiate(elf);
-  void *entry = ret + (elf->header.e_entry - elf->vbase);
-  
-  //SysCallPtr *calltable, int sin, int sout, 
-  //          int serr, char **argv, char **envv) 
-  int (*_start)(SysCallPtr *syscalls, int sin, int sout, int serr, char **argv, char **envv)
-            = entry;
-  
-  e9printf("vbase: %x\n", elf->vbase);
-  e9printf("entry: %x %x, offset: %x\n", entry, elf->header.e_entry, elf->header.e_entry - elf->vbase);
-   
-  e9printf("\n====Disassembly=====\n");
-  unsigned char *casm = entry;
-  for (int i=0; i<15; i++) {
-    e9printf("%x %x %x\n", casm[0], casm[1], casm[2]);
-    casm += 3;
-  }
-  
-  e9printf("calling. . .\n");
-  
-  unsigned char *argv[] = {
-    "ls",
-    "/usr/include",
-    "yay",
-    NULL
-  };
-  
-  unsigned char *envv[] = {
-    "PATH",
-    "/bin:/usr/bin:/usr/local/bin:/sbin:/usr/sbin",
-    NULL
-  };
-  
-  int ret2 = _start(_syscalltable, stdout->fd, stdout->fd, stdout->fd, argv, envv);
-  e9printf("process ret: %d\n", ret2);
-#endif
-}
-
-int ls_test_command(int argc, char **argv) {
-  Process *self = process_get_current();
-  int fd = process_get_stdout(self);
-  FILE _file = {fd}, *stdout = &_file;
-  
-  e9printf("argc: %d, argv: %x\n", argc, argv);
-  
-  if (argc < 2) {
-    fprintf(stdout, "missing argument\n");
-    return -1;
-  }//*/
-  
-  //for (int i=0; i<argc; i++) {
-  //  e9printf("%s ", argv[i]);
-  //}
-  //e9printf("\n");
-
-  normpath(argv[1], strlen(argv[1])+1);
-  
-  DIR *dir = opendir(argv[1]);
-  struct dirent *entry;
-  
-  while ((entry = readdir(dir))) {
-    fprintf(stdout, "  %s\n", entry->d_name);
-  }
-  
-  closedir(dir);
-  
-  return 0;
-}
-
-int fs_test_command(int argc, char **argv) {
-  Process *self = process_get_current();
-  int fd = process_get_stdout(self);
-  FILE _file = {fd}, *stdout = &_file;
-  
-  fprintf(stdout, "\next2 test!\n\n");
-  
-  extern FSInterface *rootfs;
-  extern BlockDeviceIF *rootdevice;
-  
-  fprintf(stdout, "rootfs: %x, rootdevice: %x\n", rootfs, rootdevice);
-  //return 0;
-  
-  struct stat mstat;
-  int totentries;
-  
-  //unsigned int state = safe_entry();
-  
-  rootfs->dir_entrycount(rootfs, rootdevice, 2);
-  
-  //safe_exit(state);
-  fprintf(stdout, "fs test done!\n");
-  
-  totentries = rootfs->stat(rootfs, rootdevice, 2, &mstat);
-  
-  fprintf(stdout, "stat size: %d\n", mstat.st_msize);
-  fprintf(stdout, "totentries: %d\n", totentries);
-
-  return 0;
-}
-
 int kcli_finish(int retval, int tid, int pid) {
   Process *p = process_from_pid(pid, 0);
-  CLI_state--;
-  
-  if (CLI_state < 0)
-    CLI_state = 0;
   
   if (p) {
     process_close(p);
@@ -229,16 +32,9 @@ int kcli_finish(int retval, int tid, int pid) {
   return 0;
 }
 
-int kcli_printline(FILE *stdout, char *curworkingdir) {
-  fprintf(stdout, "%s> ", curworkingdir);
-  fflush(stdout);
-  
-  return 0;
-}
-
 int kcli_exec(char *name, int argc, char **argv, int (*main)(int argc, char **argv), int wait) 
 {
-  asm("STI");
+  interrupts_enable();
   //uintptr_t addr = (uintptr_t)main;
   
   //return -1; //XXX
@@ -254,7 +50,6 @@ int kcli_exec(char *name, int argc, char **argv, int (*main)(int argc, char **ar
   process_set_finish(proc, kcli_finish);
   //}
   
-  CLI_state++;
   process_start(proc);
   
   if (wait) {
@@ -265,79 +60,24 @@ int kcli_exec(char *name, int argc, char **argv, int (*main)(int argc, char **ar
   return 0;
 }
 
-#define MAX_OUT 2048
+static int spawn_shell(FILE *stdout) {
+  char buf2[256];
+  char *argv[MAX_ARGV];
+  char *envp[1] = {NULL};
+  int pid;
 
-//modifies/splits line
-int shlex_parse(char *line, char *outbuf[MAX_OUT]) {
-  int n=0, argc=0;
+  sprintf(buf2, "/bin/sh /");
   
-  while ((n = strcspn(line, " \t\n\r\""))) {
-    outbuf[argc++] = line;
-    
-    line[n] = 0;
-    line += n+1;
-  }
+  fprintf(stdout, "executing: %s\n\n", buf2);
+  fflush(stdout);
   
-  if (*line)
-    *line = 0;
-  
-  outbuf[argc++] = 0;
-  
-  return argc;
-}
-
-int kcli_changedir(FILE *stdout, const char *commandbuf, char* curworkingdir) {
-  char _dir[512];
-  char lastcur[512];
-
-  strncpy(lastcur, curworkingdir, 512);
-  strncpy(_dir, commandbuf + strcspn(commandbuf, " \t") + 1, 512);
-
-  char *dir = strtrim(_dir);
-  int dlen = strlen(dir)-1;
-
-  //fprintf(stdout, "dir argument: %d'%s'\n", strlen(dir), dir);
-
-  if (dir[dlen-1] == '/') {
-    dir[dlen-1] = 0;
+  int argc = shlex((char*) buf2, argv);
+  if (argc <= 0) {
+    return -1;
   }
 
-  if (!strcmp(dir, "..")) {
-    //fprintf(stdout, "  descending\n");
-    
-    int len = strlen(curworkingdir);
-    
-    while (len >= 1 && curworkingdir[len-1] != '/') {
-      curworkingdir[len-1] = 0;
-      len--;
-    }
-    
-    if (len > 1 && curworkingdir[len-1] == '/') {
-      curworkingdir[len-1] = 0;
-    } else if (len == 0) {
-      curworkingdir[len++] = '/';
-      curworkingdir[len++] = 0;
-    }
-    
-    return 0;
-  }
-
-  if (dir[0] == '/') {
-    strcpy(curworkingdir, dir);
-  } else {
-    if (curworkingdir[strlen(curworkingdir)-1] != '/') {
-      strcat(curworkingdir, "/");
-    }
-    strcat(curworkingdir, dir);
-  }
-
-  DIR *fdir = opendir(curworkingdir);
-  if (!fdir) {
-    fprintf(stdout, "Error: Invalid directory %s\n", curworkingdir);
-    
-    strcpy(curworkingdir, lastcur);
-  } else {
-    closedir(fdir);
+  if (posix_spawn(&pid, argv[0], NULL, NULL, argv, envp) != 0) {
+    fprintf(stdout, "error executing /bin/sh!\n");
   }
   
   return 0;
@@ -346,32 +86,25 @@ int kcli_changedir(FILE *stdout, const char *commandbuf, char* curworkingdir) {
 int kcli_main(int argc, char **argv) {
   e9printf("Started kcli_main\n");
   
-  //while (1) {
-  //}
-  
-  unsigned char commandbuf[2048];
-  int commandlen = 0;
-  
-  unsigned char curworkingdir[MAX_PATH];
-  curworkingdir[0] = '/';
-  curworkingdir[1] = 0;
-  
   //kprintf(" stdout: %d\n\n", process_get_stdout());
   Process *proc = process_get_current();
+  e9printf("proc: %p\n", proc);
   
+  //make libc wrapper of stdout
   FILE _file = {proc->stdout};
   FILE *stdout = &_file;
-  
-  kcli_printline(stdout, curworkingdir);
  
   debug_check_interrupts();
-  int laststate = CLI_state;
+  
+  //spawn shell
+  spawn_shell(stdout);
   
   while (1) {
     int printcode;
     int hadcode = 0;
+    int _i=0;
     
-    while ((printcode = fgetc(stdout)) > EOF) {
+    while (_i++ < 100 && (printcode = fgetc(stdout)) > EOF) {
       if (printcode != EOF) {
         terminal_putchar(printcode);
         hadcode = 1;
@@ -382,170 +115,6 @@ int kcli_main(int argc, char **argv) {
       terminal_flush();
     }
     
-    if (CLI_state != laststate && !CLI_state) {
-      kcli_printline(stdout, curworkingdir);
-    }
-    
-    laststate = CLI_state;
-    //if (CLI_state) {
-    //XXX  continue;
-    //}
-    
-    short code = keyboard_poll(); //getchar_nowait();
-      
-    if (code > 0 && (code&128) == 0) {
-      //kprintf(" %x             %x\n", code & 127, get_raw_keycode(code) & 127); 
-      //terminal_flush();
-    }
-    
-    if (code < 0 || (code & 128)) {
-      continue;
-    }
-
-    unsigned char ch = code & 127;
-    
-    if (keyboard_isprint(ch) || ch == '\n' || ch == '\r' || ch == '\t') {
-      terminal_resetscroll();
-      
-      ch = keyboard_handle_case(ch);
-      
-      fputc(ch, stdout);
-      //terminal_putchar(((unsigned char)ch) & 127);
-      if (ch == '\n') {
-        kcli_printline(stdout, curworkingdir);
-      }
-      
-      if (ch == '\n') {
-        commandbuf[commandlen] = 0;
-        
-        if (!strcmp(commandbuf, "top")) {
-          print_procs(stdout);
-        } else if (!strcmp(commandbuf, "t")) {
-          char buf2[256];
-          sprintf(buf2, "/bin/ls %s", curworkingdir);
-          
-          fprintf(stdout, "executing: %s\n\n", buf2);
-          fflush(stdout);
-          
-          system(buf2);
-          
-          //elf_test(stdout, stdout);
-          /*
-          char **argv = kmalloc(sizeof(char*)*MAX_OUT);
-          
-          fprintf(stdout, "|%s|\n", commandbuf);
-
-          argv[0] = "cat";
-          argv[1] = "Readme";
-          int argc = 2;
-          
-          kcli_exec(commandbuf, argc, argv, cat_test_command, 1);
-          kcli_printline(stdout, curworkingdir);
-          //*/
-        } else if (commandlen > 2 && commandbuf[0] == 'c' && 
-            commandbuf[1] == 'a' && commandbuf[2] == 't' && (commandbuf[3]==' '||commandbuf[3]=='\t'))
-        {
-          //*
-          char **argv = kmalloc(sizeof(char*)*MAX_OUT);
-          
-          fprintf(stdout, "|%s|\n", commandbuf);
-
-          int argc = shlex_parse(commandbuf, argv);
-          
-          kcli_exec(commandbuf, argc, argv, cat_test_command, 1);
-          kcli_printline(stdout, curworkingdir);
-          //*/
-        } else if (commandlen > 2 && commandbuf[0] == 'c' && 
-            commandbuf[1] == 'd' && (commandbuf[2] == ' ' || commandbuf[2] == '\t'))
-        {
-          kcli_changedir(stdout, commandbuf, curworkingdir);
-          
-          commandlen = 0;
-          commandbuf[commandlen] = 0;
-          
-          fputc('\r', stdout);
-          kcli_printline(stdout, curworkingdir);
-          fflush(stdout);
-        } else if (commandlen > 0 && (!strcmp(commandbuf, "p") || !strcmp(commandbuf, "path"))) {
-          unsigned char buf3[256] = "  /path/a  /b/d /";
-          strcpy(buf3, "  /path/a  /b/d /");
-          
-          fprintf(stdout, "normpath orig  : '%s'\n", buf3);
-          normpath(buf3, sizeof(buf3));
-          fprintf(stdout, "normpath result: '%s'\n", buf3);
-          
-        } else if (commandlen > 0 && !strcmp(commandbuf, "ls")) {
-          //*
-          char **argv = kmalloc(sizeof(char*)*MAX_OUT);
-          strcpy(commandbuf+3, curworkingdir);
-          commandbuf[2] = ' ';
-          
-          fprintf(stdout, "|%s|\n", commandbuf);
-
-          int argc = shlex_parse(commandbuf, argv);
-          
-          kcli_exec(commandbuf, argc, argv, ls_test_command, 1);
-          kcli_printline(stdout, curworkingdir);
-          //*/
-        } else if (commandlen > 0 && !strcmp(commandbuf, "fs")) {
-          char **argv = kmalloc(sizeof(char*)*MAX_OUT);
-          int argc = shlex_parse(commandbuf, argv);
-          
-          fprintf(stdout, "\n");
-          kcli_exec(commandbuf, argc, argv, fs_test_command, 1);
-          kcli_printline(stdout, curworkingdir);
-        } else if (!strcmp(commandbuf, "heap") || !strcmp(commandbuf, "h")) {
-          test_kmalloc();
-        } else if (!strcmp(commandbuf, "heap") || !strcmp(commandbuf, "c")) {
-          return 0;
-        } else if (!strcmp(commandbuf, "s") || !strcmp(commandbuf, "bt")) {
-          stacktrace(kprintf);
-          kprintf(" %x\n", get_eip());
-        }
-        
-        commandlen = 0;
-      } else {
-        commandbuf[commandlen++] = ch;
-      }
-      
-      terminal_flush();
-    } else {
-      //fprintf(stdout, "nonprintable key: %x\n", ch);
-      
-      switch (ch) {
-        case KEY_LEFT:
-          terminal_move_cursor(-1);
-          break;
-        case KEY_RIGHT:
-          terminal_move_cursor(1);
-          break;
-        case KEY_ENTER:
-          break;
-        case KEY_DELETE:
-          break;
-        case KEY_BACKSPACE:
-          if (commandlen > 0) {
-            commandlen--;
-            commandbuf[commandlen] = 0;
-            fputc(8, stdout);
-          }
-          break;
-        case KEY_PAGEUP:
-          fputc(27, stdout);
-          fputc('[', stdout);
-          fputc(15, stdout);
-          fputc('S', stdout);
-          break;
-        case KEY_PAGEDOWN:
-          fputc(27, stdout);
-          fputc('[', stdout);
-          fputc(15, stdout);
-          fputc('T', stdout);
-          break;
-      }
-    }
-      
-    terminal_reset_hcursor();
-    //task_sleep(5);
+    task_yield();
   }
 }

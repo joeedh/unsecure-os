@@ -11,6 +11,11 @@
 
 size_t strlen(const unsigned char* str);
 
+//XXX properly rename n to l
+#define strlcpy strncpy
+#define strlcat strncat
+#define strllen strnlen
+
 static inline int memcmp(void *va, void *vb, size_t size) {
   unsigned char *a = va, *b = vb;
   
@@ -116,11 +121,11 @@ static inline int strcpy(const unsigned char *a, const unsigned char *b) {
 static inline int strncpy(const unsigned char *a, const unsigned char *b, size_t b_size) {
   unsigned char *c = (unsigned char*)a;
   unsigned char *d = (unsigned char*)b;
-  unsigned int i=0;
+  unsigned int i = 0;
   
-  *c = 0;
-  while (*d && i < b_size) {
+  while (*d && i < b_size-1) {
     *c++ = *d++;
+    i++;
   }
   *c = 0;
   
@@ -212,6 +217,21 @@ static unsigned char *strcat(unsigned char *a, unsigned char *b) {
   
   *a = 0;
   return a;
+}
+
+static unsigned char *strncat(unsigned char *a, unsigned char *b, size_t asize) {
+  size_t i = strnlen(a, asize);
+  
+  if (i >= asize-1)
+    return a; //do nothing in this case
+  
+  while (i < asize-1 && *b) {
+    a[i++] = *b++;
+  }
+  
+  a[i++] = 0;
+  
+  return a+i;
 }
 
 //non-starndard function

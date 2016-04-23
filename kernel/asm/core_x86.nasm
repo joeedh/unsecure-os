@@ -3,6 +3,7 @@ m4_changecom(`;', `')
 m4_include(`definitions.nasm')
 m4_include(`bootheader.nasm')
 m4_include(`data.nasm')
+m4_include(`real16.nasm')
 
 section .text
 align 8
@@ -15,9 +16,9 @@ global _setIRT
 _setIRT:
   docli
   
-  push ax;
-  push eax;
-  push ebx;
+  push ax
+  push eax
+  push ebx
   
   mov eax, idt_table
   mov [__k_idtr+2], eax
@@ -26,15 +27,15 @@ _setIRT:
   mov ax, 2047
   mov [__k_idtr], ax
     
-  lidt [__k_idtr];
+  lidt [__k_idtr]
   
-  pop ebx;
+  pop ebx
   pop eax
-  pop ax;
+  pop ax
   
   ret
   
-%define nconcat(a, b) a %+ b
+;%define nconcat(a, b) a %+ b
 %define PIC1 0x20
 %define PIC2 0xA0
 
@@ -44,33 +45,17 @@ extern inside_irq;
 m4_define(`isr_wrapper', `
   irq_entry
   
-  pusha
-  pushad
-  pushfd
-  
-  mov al, 105
-  out byte 0xE9, byte al
-  mov al, 48 + $1
-  out byte 0xE9, byte al
-  mov al, 10
-  out byte 0xE9, byte al
-  mov al, 0
-  out byte 0xE9, byte al
-  
-  push ebp  ;frame pointer
+  push ebp  ;push frame pointer
   mov  ebp, esp;
+  
   cld
   extern nconcat(_isr_handler, $1);
   call nconcat(_isr_handler, $1);
   pop ebp;
   
-  mov al, 20h
-  out $2, al
+  doPIC($2)
   
-  popfd
-  popad
-  popa
-  
+  pop ebp ;pop frame pointer
   irq_iret
 ')
 
@@ -88,6 +73,8 @@ dd 0
 m4_define(`exc_wrapper', `
   align 8;
   
+  mfence
+  
   ;deal with stack frame pointer
   push ebp 
   mov ebp, esp;
@@ -98,30 +85,20 @@ m4_define(`exc_wrapper', `
   ;set_debug_char(DEBUG_EXC, 69, RED)
   ;set_debug_int(DEBUG_EXC, 5, $1, RED)
   
-  mov al, 101
-  out byte 0xE9, byte al
-  out 0x80, al
-  mov al, 48 + $1
-  out byte 0xE9, byte al
-  out 0x80, al
-  mov al, 10
-  out byte 0xE9, byte al
-  out 0x80, al
-  mov al, 0
-  out byte 0xE9, byte al
-  out 0x80, al
-  
   cld
   
   inc dword [_except_depth];
   
-  mov eax, $2;
+  mov eax, $1;
   push eax;
   
   ;clear exceptions
   fclex;
+  
   extern nconcat(_exc_handler, $1);
+  mov ebx, .aftercall
   call nconcat(_exc_handler, $1);
+  .aftercall:
   pop eax;
 
   dec dword [_except_depth];
@@ -134,9 +111,12 @@ m4_define(`exc_wrapper', `
     fclex;
     
     ;pop saved frame pointer
-    pop ebp 
-    dosti;
-    iret;
+    pop ebp
+    
+    mfence
+    
+    dosti
+    iret
   
   .cleardebug:
     set_debug_char(DEBUG_EXC, 101, BLACK)
@@ -149,11 +129,11 @@ global exr_12, exr_13, exr_14, exr_15, exr_16, exr_17, exr_18;
 
 align 8
 exr_0: exc_wrapper( 0, 1)
-;exr_1: exc_wrapper( 1, 2)
+exr_1: exc_wrapper( 1, 2)
 
-exr_1: ;special debug exception
-  iret;
-  
+;exr_1: ;special debug exception
+;  iret;
+
 exr_2: exc_wrapper( 2, 4)
 exr_3: exc_wrapper( 3, 8)
 exr_4: exc_wrapper( 4, 16)
@@ -176,6 +156,8 @@ exr_18: exc_wrapper( 18, (1<<17))
 m4_define(`isr_wrapper_clilock', `
   irq_entry
   
+  mfence
+  
   docli
   ;push ebp  ;frame pointer
   ;mov  ebp, esp;
@@ -183,32 +165,18 @@ m4_define(`isr_wrapper_clilock', `
   pushad
   pushfd
   
-  mov al, 105
-  out 0xE9, byte al
-  out 0x80, al
-  mov al, 48 + $1
-  out 0xE9, byte al
-  out 0x80, al
-  mov al, 10
-  out 0xE9, byte al
-  out 0x80, al
-  mov al, 0
-  out 0xE9, byte al
-  out 0x80, al
-  
   cld
   extern nconcat(_isr_handler, $1);
   call nconcat(_isr_handler, $1);
   
-  mov al, 20h
-  out $2, al
+  doPIC($2)
   
   popfd
   popad
   
+  mfence
   ;pop ebp  ;frame pointer
   dosti
-  
   irq_iret
 ')
 
@@ -222,38 +190,30 @@ _isr_7_message:
   
 ;special spurious-irq-handling code
 isr_7:
-  pushad;
-  pushfd;
+  irq_entry
   
   push _isr_7_message;
   call e9printf;
   pop eax;
   
-  mov al, 20h
-  out 20h, al
+  doPIC(PIC1)
   
-  popfd;
-  popad;
-  iret;
+  irq_iret
   
 _isr_15_message:
   db 'IRQ 15 detected!\n\0'
 
 ;special spurious-irq-handling code
 isr_15:
-  pushad;
-  pushfd;
+  irq_entry
   
   push _isr_15_message;
   call e9printf;
   pop eax;
+
+  doPIC(PIC2)
   
-  mov al, 20h
-  out PIC2, al
-  
-  popfd;
-  popad;
-  iret;
+  irq_iret
 
 ;isr_0: isr_wrapper(          0, PIC1) ;timer
 isr_1 : isr_wrapper_clilock(  1, PIC1) ;keyboard
@@ -296,7 +256,7 @@ global _setGDT_prot2
 _setGDT_prot2:
   docli
   
-  mov eax, __k_gdt
+  mov eax, thegdt
   mov [__k_gdtr+2], eax
 
   ;size of gdt minus 1  
@@ -305,6 +265,8 @@ _setGDT_prot2:
     
   lgdt [__k_gdtr];
   
+  ;load data segment register via
+  ;long jump
   jmp 0x08:.flush;
   
   .flush:
@@ -314,9 +276,9 @@ _setGDT_prot2:
     mov fs, ax
     mov gs, ax
     mov ss, ax
-    
+
     ;set main TSS
-    mov ax, 0x18;
+    mov ax, 0x18
     ltr ax;
     
     ret
@@ -352,15 +314,124 @@ extern _isr_handler0;
 extern get_next_task_timer;
 extern task_switch_granularity;
 
-isfdsfr_0:
-  pushad
-  pushfd
+_isr__message:
+  db 10 ; LF
+  db 9, '1: %x  %x', 10
+  db 9, '2: %x  %x', 10
+  db 9, '3: %x  %x', 10
+  db 9, '4: %x  %x', 10
+  db 9, '5: %x  %x', 10
+  db 10 ; LF
+  db 0
+
+isr0_debug_stack_end: align 8
+reszero(1024*32)
+isr0_debug_stack:
+
+m4_define(`isr0_print_stack', `
+  mov esp, isr0_debug_stack
+  push ebp ;save original stack pointer
+  
+  push dword [ecx+DWSIZE*4]
+  push dword [ebp+DWSIZE*4]
+
+  push dword [ecx+DWSIZE*3]
+  push dword [ebp+DWSIZE*3]
+
+  push dword [ecx+DWSIZE*2]
+  push dword [ebp+DWSIZE*2]
+  
+  push dword [ecx+DWSIZE*1]
+  push dword [ebp+DWSIZE*1]
+
+  push dword [ecx+DWSIZE*0]
+  push dword [ebp+DWSIZE*0]
+  
+  push _isr__message
+  
+  call e9printf
+  ;clearly I need to do something like, add esp, DWSIZE*11, or something
+  pop eax
+  
+  pop eax
+  pop eax
+  pop eax
+  pop eax
+  pop eax
+  
+  pop eax
+  pop eax
+  pop eax
+  pop eax
+  pop eax
+  
+  ;restore original stack
+  pop ebp
+  mov esp, ebp
+')
+
+isr0_temp_int1: align 8
+  dd 1
+isr0_temp_int2: align 8
+  dd 1
+
+m4_define(`isr0_debug_stack', `
+  mov dword [isr0_temp_int1], ecx;
+  mov dword [isr0_temp_int2], ebp;
+  
+  mov ebp, esp
+  
+  mov ecx, [k_curtaskp]
+  add ecx, DWSIZE
+  mov ecx, [ecx]
+  mov ecx, [ecx]
+  add ecx, DWSIZE*9
+  
+  isr0_print_stack()
+  
+  mov ecx, dword [isr0_temp_int1]
+  mov ebp, dword [isr0_temp_int2]
+')
+
+raw_next_task_jumpback:
+  dd 0
+
+;this is not thread-safe!
+;expects jumpback pointer in ebx
+;will sti
+raw_next_task:
+  mov [raw_next_task_jumpback], ebx
+  
+  ;save esp (signal system will probably want it later)
+  mov eax, dword [k_curtaskp]
+  mov dword [eax], esp
   
   ;move to next task
-  ;mov eax, [k_curtaskp]
-  ;add eax, DWSIZE;
-  ;mov eax, [eax];
-  ;mov dword [k_curtaskp], eax
+  mov eax, [k_curtaskp]
+  add eax, DWSIZE
+  mov eax, [eax]
+  mov dword [k_curtaskp], eax
+  mov esp, [eax]
+  
+  ctx_pop()
+  clear_nt()
+  
+  jmp [raw_next_task_jumpback]
+  
+isr_0:
+;  isr0_debug_stack()
+  
+  ctx_push()
+
+  mov eax, dword [k_curtaskp];
+  mov dword [eax], esp;
+  
+  ;move to next task
+  mov eax, [k_curtaskp]
+  add eax, DWSIZE;
+  mov eax, [eax];
+  mov dword [k_curtaskp], eax
+  mov esp, [eax];
   
   ;set_debug_char(DEBUG_ISR00, 105, GREEN)
   ;docli
@@ -368,11 +439,13 @@ isfdsfr_0:
   ;dosti
   
   ;send ok to PIC
-  mov al,20h
-  out 20h,al
+  doPIC(PIC1)
   
-  popfd
-  popad
+  ctx_pop()
+  clear_nt()
+  
+  sti
+  fclex
   iret
 
 isr_debug_stack_bottom:
@@ -380,9 +453,42 @@ reszero(32*1024)
 isr_debug_stack_top:
 
 ; timer irq, used for task-switching
-isr_0:
+issr_0:
+  cli
+  ctx_push
+  
+  ;save old stack position
+  mov eax, dword [k_curtaskp];
+  mov [eax], ebp;
+
+  ;increment tick counter
+  extern kernel_tick;
+  add dword [kernel_tick], 1
+
+  ;move to next task
+  mov eax, [k_curtaskp]
+  add eax, DWSIZE
+  mov eax, [eax]
+  
+  mov dword [k_curtaskp], eax
+  mov esp, eax
+  mov esp, [esp];
+  
+  ;send ok to PIC
+  doPIC(PIC1)
+  
+  ctx_pop
+
+  sti
+  iret
+
+; timer irq, used for task-switching
+isr_00:
   docli
   ctx_push
+  
+  ;prevent bad prefetching behaviours
+  mfence
   
   mov ebp, esp;
   
@@ -393,44 +499,65 @@ isr_0:
   ;call isr0_debug on temporary stack
   ;extern isr0_debug;
   ;mov esp, isr_debug_stack_top;
-  ;push ebp;
-  ;call isr0_debug;
-  ;pop esp;
+  ;push ebp
+  ;call isr0_debug
+  ;pop esp
   
   ;increment tick counter
   extern kernel_tick;
-  add dword [kernel_tick], 1;
+  add dword [kernel_tick], 1
   
   ;move to next task
   mov eax, [k_curtaskp]
-  add eax, DWSIZE;
-  mov eax, [eax];
+  add eax, DWSIZE
+  mov eax, [eax]
   
   mov dword [k_curtaskp], eax
   mov esp, eax
   mov esp, [esp];
   
   ;send ok to PIC
-  mov al, 20h
-  out PIC1, al
+  doPIC(PIC1)
   
   ctx_pop
-  
-  dosti;
+
+  ;prevent bad prefetching behaviours
+  mfence
+
+  dosti
   iret
   
 global __initTask2
 extern _task_cleanup;
 
-it3_fcall:
-  ctx_push;
-  jmp __initTask3.next;
+;it3_fcall:
+;  ctx_push;
+;  jmp __initTask3.next;
   
 global __initTask3
+__initdTask3: align 8
+  docli;
+  push ebp;
+  pushad;
+  
+  ;set threading head
+  mov eax, [k_curtaskp];
+  mov [eax], esp;
+  mov ebp, esp;
+  
+  mov esp, [k_curtaskp];
+  mov esp, [esp];
+  
+  popad
+  pop ebp
+  
+  ;enable interrupts again
+  dosti;
+  ret;
+
 __initTask3: align 8
   docli;
-  ;mov ebp, esp;
-  ;pushad;
+  ;mov ebp, esp
   
   ;set threading head
   mov eax, [k_curtaskp];
@@ -443,23 +570,30 @@ __initTask3: align 8
   mov eax, dword [esp + DWSIZE*2] ;second argument is Task* pointer
   mov esp, [eax]
   
-  ;push argc/argv
+  ;argc/argv
   push dword [eax + 20];
   push dword [eax + 16];
 
-  ;push return call to _task_cleanup
+  ;near return to _task_cleanup
   push dword _task_cleanup;
-  push dword _task_cleanup;
-
+  
+  ;eflags, required by interrupt handler
+  pushfd
+  
+  ;mask out interrupt flag
+  mov eax, [esp]
+  or eax, (1<<9)
+  mov [esp], eax;
+  
+  ;far return
   push dword 0x08;
   push ebx
+  
+  ;thread context
   ctx_push;
   
-  ;call 0x08:it3_fcall
-  .next:
-  
   ;save new task's esp for later use
-  mov ebp, esp;
+  mov ecx, esp;
   
   ;restore original thread's stack
   mov esp, [k_curtaskp];
@@ -469,39 +603,34 @@ __initTask3: align 8
   mov eax, dword [esp + DWSIZE*2] ;second argument is Task* pointer
   
   ;update task's head
-  mov dword [eax], ebp;
-  
-  ;popad;
+  mov dword [eax], ecx;
   
   ;enable interrupts again
   dosti;
   ret;
     
-global task_switch;
-task_switch:
-  docli;
-  mov eax, [esp + 4];
-  mov [k_debug], eax;
-  
-  ;set up far call.  push argument.
-  call 0x08:__switchTask;
-  
-  ret;
-
 align 8
 switch_task_scratch:
 dd 8
 
+global task_yield
+task_yield:
+  docli
+  
+  ;set up irq-compatible far call: eflags, segment, return pointer.
+  pushfd
+  
+  ;mask in interrupt flag
+  mov eax, [esp]
+  or eax, (1<<9)
+  mov [esp], eax;
+  
+  call 0x08:__switchTask
+  ret
+  
 ;dw __switchTask, seg __switchTask
 __switchTask:
   ;argument
-  
-  ;dosti;
-  mov eax, [esp + 12];
-  mov dword [k_debug2], eax;
-  
-  mov ebx,  dword [esp + 12]
-  mov dword [switch_task_scratch], ebx;
   
   ctx_push;
   
@@ -509,20 +638,39 @@ __switchTask:
   mov eax, dword [k_curtaskp];
   mov dword [eax], esp;
   
-  mov ebx, [k_curtaskp];
-  mov esp, ebx;
-  mov esp, [esp];
+  ;move to next task
+  mov eax, [k_curtaskp]
+  add eax, DWSIZE;
+  mov eax, [eax];
+  mov dword [k_curtaskp], eax
+  
+  ;set stack
+  mov esp, [eax];
   
   ctx_pop;
-  
   dosti;
+  
+  ;emulate IRQ far return, which pops
+  ;an eflags register off the stack after 
+  ;doing the return
+  push eax
+  
+  mov eax, [esp+DWSIZE*2] ;should be far return segment
+  mov [esp+DWSIZE*3], eax
+  mov eax, [esp+DWSIZE*1] ;should be far return pointer
+  mov [esp+DWSIZE*2], eax
+  
+  pop eax
+  
+  add esp, 4
+  
   db 0xcb; force far return
   dd 0;
   
 global __initMainTask
 __initMainTask:
   ;save current stack head
-  mov eax, [k_curtaskp];
+  mov eax, dword [k_curtaskp];
   mov [eax], esp;
   ret;
 
@@ -544,3 +692,63 @@ global get_eip
 get_eip:
   mov eax, [esp];
   ret;
+
+m4_include(`core_fpu.nasm')
+
+global SBIOS_CallBios
+SBIOS_CallBios:
+  mov eax, 0x0 ;zero eax, in case bios ignores upper 16 bits
+  pusha;
+  
+  ;mov eax, [0x00002048 + 4];
+  
+  
+  ;enter 16 bit mode
+  call 0x08:0x2000
+  
+  ;int 11h;
+  
+  ;enter 32 bit mode again
+  call 0x08:0x2000
+  
+  popa;
+  ret
+
+global emergency_proc_exit
+emergency_proc_exit:
+  cli
+  
+  ;set up emergency stack
+  mov [emergency_proc_exit_stack], esp
+  mov esp, [emergency_proc_exit_stack + 4]
+  
+  extern _emergency_proc_exit
+  call _emergency_proc_exit
+  
+  pop esp
+  
+  ;call task_yield;
+  ;mov ebx, .next
+  ;jumpback should already be in ebx
+  
+  jmp raw_next_task
+  ;.next:
+  ;sti
+  ;iret
+
+global imemset
+imemset:
+  push ebp;
+  mov ebp, esp;
+  
+  mov eax, [esp+DWSIZE*3]
+  mov ebx, [esp+DWSIZE*2]
+  mov ecx, [esp+DWSIZE]
+  
+  .back:
+  mov [ecx+eax], ebx;
+  dec eax;
+  jnz .back
+  
+  pop ebp;
+  ret

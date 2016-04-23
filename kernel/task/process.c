@@ -1,5 +1,6 @@
 #include "process.h"
 #include "process_management.h"
+#include "../userinclude/wait.h"
 #include "task.h"
 
 #include "../definitions/memory.h"
@@ -15,6 +16,8 @@
 #include "../drivers/keyboard/keyboard.h"
 #include "../drivers/tty/tty.h"
 #include "../drivers/fs/memfile.h"
+#include "../drivers/fs/fs_interface.h"
+#include "../drivers/fs/fs_file.h"
 #include "../task/task.h"
 #include "../task/lock.h"
 #include "../task/rwlock.h"
@@ -36,7 +39,7 @@ RWLock _procsys_lock = LOCK_INIT;
 static Process kernelproc;
 static LinkNode kernelproc_thread;
 
-extern Process processes[MAX_TASKS];
+Process processes[MAX_TASKS];
 static int used_processes[MAX_TASKS] = {0,};
 
 //caches return status of recently finish processes
@@ -49,17 +52,19 @@ static void _nullop_proc_finishfunc(int retval, int tid, int pid) {
 }
 
 void process_initialize() {
-  memset(retcache, 0, sizeof(retcache));
-  retcache_cur = 0;
-  krwlock_init(&retcache_lock);
-  
   pidgen = 1;
+
+  krwlock_init(&retcache_lock);
   krwlock_init(&_procsys_lock);
   
   memset(used_processes, 0, sizeof(used_processes));
   memset(processes, 0, sizeof(processes));
   memset(&running_processes, 0, sizeof(running_processes));
   memset(&finishing_processes, 0, sizeof(finishing_processes));
+  memset(&kernelproc, 0, sizeof(kernelproc));
+  memset(retcache, 0, sizeof(retcache));
+
+  retcache_cur = 0;
   
   //create main process
   Process *process = &kernelproc;
@@ -273,15 +278,20 @@ int process_start(Process *process) {
   procdebug("starting process. . .\n");
   
   LinkNode *thread = kmalloc(sizeof(LinkNode));
+ 
+  //temporary ipc pipe
+  //need to design proper system.
+  //sockets?  seem to have issues for ipc, dbus?
+  process->temp_ipc = kmemfile_create(DEFAULT_STDFILE_SIZE*4, O_NONBLOCK);
   
   if (process->stdin == 0) {
-    process->stdin = kmemfile_create(DEFAULT_STDFILE_SIZE);
+    process->stdin = kmemfile_create(DEFAULT_STDFILE_SIZE, 0);
   }
   if (process->stdout == 0) {
-    process->stdout = kmemfile_create(DEFAULT_STDFILE_SIZE);
+    process->stdout = kmemfile_create(DEFAULT_STDFILE_SIZE, 0);
   }
   if (process->stderr == 0) {
-    process->stderr = kmemfile_create(DEFAULT_STDFILE_SIZE);
+    process->stderr = kmemfile_create(DEFAULT_STDFILE_SIZE, 0);
   }
   
   process->state |= PROC_RUNNING;
@@ -321,6 +331,8 @@ int process_close(Process *process) {
   }
   
   process->threads.first = process->threads.last = NULL;
+  
+  close(process->temp_ipc);
   
   //free any remaining allocated memory
   pfreeall(process);
@@ -415,16 +427,23 @@ static int _find_retval(int pid, int *pidout) {
 }
 
 int waitpid(int pid, int *stat_loc, int options) {
+  int nohang = options & WNOHANG;
+  
   if (!stat_loc)
     return -1;
-
+  
   Process *p = process_from_pid(pid, 0);
   
   if (!p) {
-    return _find_retval(pid, stat_loc);
+    *stat_loc = _find_retval(pid, stat_loc);
+    return pid;
   }
   
-  while (p->state & PROC_RUNNING) {
+  while (!nohang && (p->state & PROC_RUNNING)) {
+  }
+  
+  if (nohang && (p->state & PROC_RUNNING)) {
+    return 0; //no status available
   }
   
   int ret = -1;
@@ -435,20 +454,64 @@ int waitpid(int pid, int *stat_loc, int options) {
     ret = p->retval;
   } else {
     interrupts_enable();
-    return _find_retval(pid, stat_loc);
+    *stat_loc = _find_retval(pid, stat_loc);
+    
+    return pid;
   }
   
   interrupts_enable();
   
   *stat_loc = ret;
-  return 0;
+  return pid;
 }
 
 FILE *popen(const char *command, const char *mode) {
   return NULL;
 }
 
-int exit(int retval) {
-  e9printf("implement me!\n");
-  return 0; //implement me!
+extern uintptr_t emergency_proc_exit_stack[];
+
+int _emergency_proc_exit() {
+  Process *p = process_from_pid(k_curtaskp->pid, 1);
+  p->retval = -1;
+  
+  process_close(p);
+  
+  return 0;
+}
+
+static int proc_stop_task(int argc, char **argv) {
+  Process *p = process_from_pid(argc, 0);
+  int retval = (int)argv;
+  
+  if (!p) { //something has already happened to the process; destroy
+    e9printf("Process %d has already died\n", argc);
+    return -1;
+  }
+  
+  //destroys all threads
+  p->retval = retval;
+  process_close(p);
+  
+  return 0;
+}
+
+int _exit(int retval) {
+  e9printf("_exit called!\n");
+
+  int pid = process_get_current()->pid;
+  
+  //spawn an orphaned kernel task to kill the process
+  spawn_task(pid, (char**)retval, proc_stop_task, NULL, &kernelproc);
+  task_yield(); //yield into new task
+  
+  e9printf("ZOMBIE! I SEE A ZOMBIE!\n");
+  while (1) {
+  }
+  
+  return 0;
+}
+
+int getpid() {
+  return process_get_current()->pid;
 }

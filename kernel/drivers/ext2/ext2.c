@@ -335,20 +335,27 @@ static inline size_t find_inode(BlockDeviceIF *device, size_t inode, ext2fs *efs
 //fileoff is offset of indirect block
 static size_t read_indirect(BlockDeviceIF *device, ext2fs *efs, int fileoff, int blockoff, int depth) {
   int block = blockoff, d = depth;
+  
   size_t blocksize = efs->blocksize, totpointer = blocksize / 4;
   
-  for (int i=depth-1; i >= 0; i--) {
-    d = i;
+  e9printf("indirect read! %d %d %d\n", fileoff, blockoff, depth);
+  
+  for (int i=depth; i > 0; i--) {
+    d = i-1;
     block = blockoff;
     
     while (d > 0) {
       block /= totpointer;
       d--;
     }
+    
     block = block % totpointer;
     
     int block2;
-    device->read(device, fileoff + block*4, 4, &block2);
+    if (!device->read(device, fileoff + block*4, 4, &block2)) {
+      e9printf("\n  read error!\n");
+    }
+    e9printf("  read: %d %d %d\n", block, fileoff+block*4, block2);
     
     fileoff = block2*blocksize;
   }
@@ -362,14 +369,15 @@ static size_t get_inode_block(INode *inode, BlockDeviceIF *device, ext2fs *efs, 
   if (block < 12) {
     return inode->direct_ptrs[block];
   }
+  
   block -= 12;
   
   if (block < totpointer) {
-    return read_indirect(device, efs, inode->indirect1, block, 1);
-  } else if (block < 65536) {
-    return read_indirect(device, efs, inode->indirect2, block, 2);
+    return read_indirect(device, efs, inode->indirect1*blocksize, block, 1);
+  } else if (block < totpointer*totpointer) {
+    return read_indirect(device, efs, inode->indirect2*blocksize, block - totpointer*totpointer, 2);
   } else {
-    return read_indirect(device, efs, inode->indirect3, block, 3);
+    return read_indirect(device, efs, inode->indirect3*blocksize, block - totpointer*totpointer*totpointer, 3);
   }
 }
 
@@ -866,18 +874,47 @@ static int ext3_fstat(void *self, BlockDeviceIF *device, int filefd, struct stat
   
   e9printf("inode.size_lower32: %d\n", inode.size_lower32);
   e9printf("inode.size_lower32: %d %d %d\n", inode.type, inode.userid, inode.groupid);
-  buf->st_msize = inode.size_lower32;
+  
+  int m = 0;
+  
+  if (inode.type & TYPE_DIRECTORY)
+    m |= S_IFDIR;
+  
+  buf->st_size = inode.size_lower32;
+  buf->st_ino = file->inode_nr;
+  buf->st_mode = m;
   
   return 0;
 }
 
-static int ext3_stat(void *self, BlockDeviceIF *device, int inode, struct stat *buf) {
+static int ext3_stat(void *self, BlockDeviceIF *device, int inode_nr, struct stat *buf) {
   ext2fs *efs = self;
   ext2fs_readmeta(device, efs);
   
   memset(buf, 0, sizeof(*buf));
   
-  return -1;
+  //static int read_inode(ext2fs *efs, BlockDeviceIF *device, int inode, INode *out)
+  INode inode;
+  memset(&inode, 0, sizeof(inode));
+  
+  if (read_inode(efs, device, inode_nr, &inode) != 0) {
+    _fs_error(efs, -1, "Inode read error");
+    return -1;
+  }
+  
+  e9printf("inode.size_lower32: %d\n", inode.size_lower32);
+  e9printf("inode.size_lower32: %d %d %d\n", inode.type, inode.userid, inode.groupid);
+  
+  int m = 0;
+  
+  if (inode.type & TYPE_DIRECTORY)
+    m |= S_IFDIR;
+  
+  buf->st_size = inode.size_lower32;
+  buf->st_ino = inode_nr;
+  buf->st_mode = m;
+  
+  return 0;
 }
 
 FSInterface *kext2fs_create(BlockDeviceIF *device) {

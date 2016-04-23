@@ -12,6 +12,7 @@ int keyboard_toascii(int chr);
 int keyboard_get_modflag();
 
 int keyboard_poll();
+int keyboard_casepoll();
 short get_raw_keycode(short code);
 
 unsigned char getchar();

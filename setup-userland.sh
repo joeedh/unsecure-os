@@ -12,8 +12,10 @@ mkdir -p install/tmp
 mkdir -p install/etc
 mkdir -p install/var/log
 
+cp kernel/sharedmem/shm.h install/usr/include/sys/mman.h
 cp kernel/syscalls/syscalls.h install/usr/include/sys
 cp kernel/drivers/fs/dirent.h install/usr/include
+cp kernel/drivers/fs/unistd.h install/usr/include
 cp kernel/libc/*.h install/usr/include
 cp -r kernel/userinclude/* install/usr/include
 cp kernel/drivers/fs/dirent.h install/usr/include/sys

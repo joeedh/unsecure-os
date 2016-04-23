@@ -20,6 +20,16 @@
 #include "task/task.h"
 #include "task/process.h"
 
+typedef struct FboInfo {
+  unsigned int _type; //short type, flags;
+  unsigned int _size;
+  
+  uint64_t addr;
+  uint32_t pitch, width, height;
+  
+  uint8_t bpp, type, reserved;
+} FboInfo;
+
 void *_bootinfo;
 
 typedef struct infotag {
@@ -75,11 +85,25 @@ void parse_bootinfo(void *bootinfo1) {
     if (len & 7)
       len += 8 - (len & 7);
     
+    //parse_bootinfo
     if (info->type == 5) { //boot device info
       e9printf("Boot device info found!\n");
       ic = ((unsigned int*)(c + 8));
       
       e9printf("biosdev: %d, partition: %d, sub_partition: %d\n", ic[0], ic[1], ic[2]);
+    } else if (info->type == 8) { //framebuffer info
+      FboInfo *fbo = (FboInfo*) c;
+      
+      e9printf("fboinfo: %d %d %d %d %x\n", fbo->width, fbo->height, fbo->bpp, fbo->type, fbo->addr);
+      
+      extern uintptr_t vesa_origin, vesa_width, vesa_height, vesa_bpp, vesa_type;
+      
+      vesa_origin = (uintptr_t) fbo->addr;
+      vesa_width = fbo->width;
+      vesa_height = fbo->height;
+      vesa_bpp = fbo->bpp;
+      vesa_type = fbo->type;
+      
     } else if (info->type == 6) { //memory map! yay!
       MemoryMap *map = (MemoryMap*) c;
       

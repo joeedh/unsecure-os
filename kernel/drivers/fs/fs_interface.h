@@ -8,12 +8,11 @@
 #include "../fs/dirent.h"
 #include "../../task/lock.h"
 
+#include "stat.h"
+
 #define MAX_PATH 255
 
-//XXX look up in posix
-typedef struct stat {
-  int st_msize, st_mtime, st_atime, st_flags, st_user, st_group;
-} stat;
+struct pollfd;
 
 //XXX look up in posix
 //also, why do we always use integers for file
@@ -68,12 +67,20 @@ typedef struct FSInterface {
   int (*openat)(void *self, int fd, BlockDeviceIF *device, const char *utf8path, int utf8path_size, int oflag);
   int (*close)(void *self, BlockDeviceIF *device, int fd);
   
+  //addr is ignored if paging disabled
+  void *(*mmap)(void *self, BlockDeviceIF *device, void *addr, size_t length, int prot, int flags, int fd, int offset);
+  int (*munmap)(void *self, BlockDeviceIF *device, void *addr, size_t length);
+  
+  int (*ftruncate)(void *self, BlockDeviceIF *device, int fd, size_t size);
+  int (*poll)(void *self, BlockDeviceIF *device, int fd, struct pollfd *pfd, int timeout_ms);
+  
   //returns number of bytes written
   int (*pwrite)(void *self, BlockDeviceIF *device, int file, const char *buf, size_t bufsize, size_t fileoff);
   
   //returns number of bytes read
   int (*pread)(void *self, BlockDeviceIF *device, int file, const char *buf, size_t bufsize, size_t fileoff);
-  int (*lseek)(void *self, BlockDeviceIF *device, int file, size_t off, size_t whence);
+  
+  int (*lseek)(void *self, BlockDeviceIF *device, int file, int off, int whence);
   int (*rewind)(void *self, BlockDeviceIF *device, int file);
   int (*tell)(void *self, BlockDeviceIF *device, int file);
   int (*eof)(void *self, BlockDeviceIF *device, int file);
@@ -119,6 +126,6 @@ typedef struct FSInterface {
 } FSInterface;
 
 //note: does NOT lock fsinterface!!
-void _fs_error(void *fsinterface, int code, unsigned char *error);
+int _fs_error(void *fsinterface, int code, unsigned char *error);
 
 #endif /* _FS_INTERFACE_H */

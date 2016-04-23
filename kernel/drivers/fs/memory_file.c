@@ -93,12 +93,12 @@ static int kmemfile_fstat(void *self, BlockDeviceIF *device, int filefd, struct 
   MemFile *file = (MemFile*)filefd;
   file--;
   
-  buf->st_msize = file->size; //(file->mode & O_PIPE_MODE) ? file->size : file->written;
+  buf->st_size = file->size; //(file->mode & O_PIPE_MODE) ? file->size : file->written;
   
   return 0;
 }
 
-int kmemfile_create(int size) {
+int kmemfile_create(int size, int added_flags) {
   FSInterface *fs = kmalloc(sizeof(*fs));
   
   memset(fs, 0, sizeof(*fs));
@@ -110,6 +110,7 @@ int kmemfile_create(int size) {
   fs->close = kmemfile_close;
   fs->accessmode = kmemfile_accessmode;
   fs->fstat = kmemfile_fstat;
+  //fs->mode |= added_flags;
   
   FSFile *file = kmalloc(sizeof(FSFile));
  

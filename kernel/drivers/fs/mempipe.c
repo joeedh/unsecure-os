@@ -13,7 +13,8 @@
 //size of memory file is stored in fsfile->custom
 
 typedef struct MemFile {
-  int size;
+  FSInterface head;
+  int size, used, ptr, pad;
 } MemFile;
 
 static int kpipefile_pread(void *self, BlockDeviceIF *device, int filefd, const char *buf, size_t bufsize, size_t fileoff) {
@@ -84,6 +85,10 @@ static int kpipefile_accessmode(void *self, BlockDeviceIF *device) {
   return O_RDWR|O_SEARCH;
 }
 
+static int fpipefile_poll(void *self, BlockDeviceIF *device, int fd, struct pollfd *pfd, int timeout_ms) {
+ return 0; 
+}
+
 int kpipefile_create(int size) {
   FSInterface *fs = kmalloc(sizeof(*fs));
   
@@ -95,6 +100,7 @@ int kpipefile_create(int size) {
   fs->pwrite = kpipefile_pwrite;
   fs->close = kpipefile_close;
   fs->accessmode = kpipefile_accessmode;
+  fs->poll = fpipefile_poll;
   
   FSFile *file = kmalloc(sizeof(FSFile));
   

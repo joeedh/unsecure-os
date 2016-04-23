@@ -1,10 +1,9 @@
 #include "string.h"
-#include "libk.h"
-#include "../task/task.h"
-#include "../io.h"
-
 #include "list.h"
+
+#ifdef __KERNEL_BUILD__
 #include "kmalloc.h"
+#endif
 
 void klist_append(List *list, void *vitem) {
   Link *item = vitem;

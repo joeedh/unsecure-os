@@ -12,7 +12,8 @@
 
 #include "process.h"
 
-#define TASK_DEBUG
+//#define TASK_DEBUG
+
 #ifdef TASK_DEBUG
   #define taskdebug(...) e9printf(__VA_ARGS__)
 #else
@@ -25,7 +26,7 @@ static RWLock tlock = RWLOCK_INIT;
 volatile int disable_all_locks = 0;
 #endif
 
-extern volatile Task tasks[];
+volatile Task tasks[MAX_TASKS];
 volatile Task volatile * volatile k_lasttaskp;
 volatile Task volatile * volatile k_curtaskp;
 
@@ -63,17 +64,11 @@ void tasks_initialize() {
   //set main idle task
   k_curtaskp = k_lasttaskp = task;
   
-  e9printf("    calling __initMainTask\n");
+  //e9printf("    calling __initMainTask\n");
   
   //sets task->head
-  asm("pusha");
-  asm("pushf");
-  __initMainTask();
-  asm("popf");
-  asm("popa");
-  
-  
-  e9printf("    done.\n");
+  //__initMainTask();
+  //e9printf("    done.\n");
 }
 
 static unsigned int alloc_stack() {
@@ -83,9 +78,9 @@ static unsigned int alloc_stack() {
     if (taskstacks[i] == 0) {
       unsigned int addr = MEM_STACK_BASE + MEM_STACK_INDV_SIZE*i;
       
-      //align to 8-byte boundary
-      if (addr & 7)
-        addr = 8 - (addr & 7);
+      //align to 16-byte boundary
+      if (addr & 15)
+        addr = 16 - (addr & 15);
       
       taskstacks[i] = addr;
       
@@ -117,8 +112,9 @@ void _e9print_task_stack(Task *task) {
 extern void kcli_main();
 
 void isr0_debug() {
-  extern volatile int _keydriver_isr0_flag;
+  //extern volatile int _keydriver_isr0_flag;
   
+  /*
   if (_keydriver_isr0_flag) {
     _keydriver_isr0_flag = 0;
     
@@ -131,6 +127,7 @@ void isr0_debug() {
     e9printf("\n-------------NEXT------------\n");
     _e9print_task_stack(k_curtaskp->next);
   }
+  //*/
 }
 
 void free_stack(unsigned long stack) {
@@ -329,6 +326,7 @@ int spawn_task(int argc, char **argv, int (*main)(int argc, char **argv),
 
   taskdebug("adding task %d to thread queue\n", tid);
   
+  /*
   asm("push %eax");
   asm("push %ebp");
   asm("push %ecx");
@@ -337,12 +335,16 @@ int spawn_task(int argc, char **argv, int (*main)(int argc, char **argv),
   asm("pop %ebx");
   asm("pop %ecx");
   asm("pop %ebp");
-  asm("pop %eax");
+  asm("pop %eax");//*/
 
+  //asm("push %ebp");
+  __initTask3(main, task);
+  //asm("pop %ebp");
+  
   interrupts_enable();
   
-  _e9print_task_stack(task);
-  e9printf("kcli_main: %x\n", kcli_main);
+  //_e9print_task_stack(task);
+  //e9printf("kcli_main: %x\n", kcli_main);
   
   taskdebug("task spawned successfuly\n");
   
@@ -351,10 +353,6 @@ int spawn_task(int argc, char **argv, int (*main)(int argc, char **argv),
 
 Task *cur_task() {
   return (Task*) k_curtaskp;
-}
-
-void set_k_curtaskp(Task *task) {
-  k_curtaskp = task;
 }
 
 //if all tasks are sleeping, returns first one

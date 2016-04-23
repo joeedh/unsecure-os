@@ -4,6 +4,8 @@
 
 cp kernel/syscalls/syscalls.h install/usr/include/sys
 cp kernel/drivers/fs/dirent.h install/usr/include
+cp kernel/drivers/fs/unistd.h install/usr/include
+
 cp kernel/libc/*.h install/usr/include
 
 rm install/usr/include/kmalloc.h 2> /dev/null

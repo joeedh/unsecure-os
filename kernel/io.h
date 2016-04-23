@@ -16,47 +16,44 @@
 
 extern unsigned int read_eflags();
 
-static inline void _interrupts_disable(char *file, int line) {
-  asm("CLI");
-  e9printf("cli: %s:%d\n", file, line);
-}
-
-static inline void _interrupts_enable(char *file, int line) {
-  e9printf("sti1(%x): %s:%d\n", read_eflags() & (1<<9), file, line);
-  asm("STI");
-  e9printf("  sti2(%x): %s:%d\n", read_eflags() & (1<<9), file, line);
-}
-
-//#define interrupts_disable() _interrupts_disable(__FILE__, __LINE__);
-//#define interrupts_enable() _interrupts_enable(__FILE__, __LINE__);
-
 #define _CRED ('r' | (4 << 8) | (4<<12))
 #define _CGRE ('g' | (2 << 8) | (2<<12))
-
 #define _isetclr(clr) ((uint16_t*) 0xB8000)[0] = clr
 
-#define interrupts_disable() {_isetclr(_CRED); e9printf("cli: %s:%d\n", __FILE__, __LINE__); asm("CLI");}
-#define interrupts_enable() {_isetclr(_CGRE); e9printf("sti: %s:%d\n", __FILE__, __LINE__); asm("STI");}
+//#define IRQ_DEBUG
+#ifdef IRQ_DEBUG
+  #define interrupts_disable() {_isetclr(_CRED); e9printf("cli: %s:%d\n", __FILE__, __LINE__); asm("CLI");}
+  #define interrupts_enable() {_isetclr(_CGRE); e9printf("sti: %s:%d\n", __FILE__, __LINE__); asm("STI");}
+#else
+  static inline void interrupts_disable() {
+    asm("CLI");
+    _isetclr(_CRED);
+  }
+  
+  static inline void interrupts_enable() {
+    _isetclr(_CGRE);
+    asm("STI");
+  }
+#endif
 
 extern volatile unsigned int _cpu_exception_flag;
-
 extern int get_eip();
 
 //disables interrupts and returns state used to reenable later (if they were already enabled)
 static inline unsigned int _safe_entry(unsigned char *file, int line) {
   unsigned int eflags = read_eflags();
-  e9printf("safe_entry(%x): %s:%d\n", eflags & (1<<9), file, line);
+  //e9printf("safe_entry(%x): %s:%d\n", eflags & (1<<9), file, line);
   
-  asm("cli");
+  interrupts_disable();
   return eflags;
 }
 
 //pair of safe_entry
 static inline void _safe_exit(unsigned int eflags, unsigned char *file, int line) {
-  e9printf("safe_exit(%x): %s:%d\n", eflags & (1<<9), file, line);
+  //e9printf("safe_exit(%x): %s:%d\n", eflags & (1<<9), file, line);
   
   if (eflags & (1<<9)) {
-    asm("STI");
+    interrupts_enable();
   }
   
   
@@ -107,6 +104,28 @@ static inline unsigned long read_cr0(void)
 {
     unsigned long val;
     asm volatile ( "mov %%cr0, %0" : "=r"(val) );
+    return val;
+}
+
+/*Read the value in a control register.*/
+static inline unsigned long read_cr4(void)
+{
+    unsigned long val;
+    asm volatile ( "mov %%cr4, %0" : "=r"(val) );
+    return val;
+}
+
+/*Read the value in a control register.*/
+static inline unsigned long write_cr0(unsigned long val)
+{
+    asm volatile ( "mov %0, %%cr0" : "=r"(val) );
+    return val;
+}
+
+/*Read the value in a control register.*/
+static inline unsigned long write_cr4(unsigned long val)
+{
+    asm volatile ( "mov %0, %%cr4" : "=r"(val) );
     return val;
 }
 
@@ -253,6 +272,12 @@ static inline void io_wait(void)
     /* Port 0x80 is used for 'checkpoints' during POST. */
     /* The Linux kernel seems to think it is free for use :-/ */
     asm volatile ( "outb %%al, $0x80" : : "a"(0) );
+    int i = 0;
+    
+    for (i=0; i<65535; i++) {
+      //do nothing
+    }
+    
     /* %%al instead of %0 makes no difference.  TODO: does the register need to be zeroed? */
 }
 

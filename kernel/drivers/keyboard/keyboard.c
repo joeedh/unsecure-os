@@ -86,7 +86,7 @@ volatile unsigned char _last_tty_debug_chr = 0;
 volatile int _keydriver_isr0_flag = 0;
 
 void _isr_handler1() {
-  volatile unsigned int state = safe_entry();
+  //volatile unsigned int state = safe_entry();
   //interrupts_disable();
   
   volatile unsigned char code=0, lastcode=0;
@@ -94,13 +94,20 @@ void _isr_handler1() {
   do {
     code = inb(KEYB_PORT);
     
+    if (code != _last_tty_debug_chr) {
+      terminal_set_idebug(DEBUG_KEY, 5, code, COLOR_LIGHT_BLUE);
+    }
+    _last_tty_debug_chr = code;
+    
     if (code == KCTRL_ACK) {
       continue;
     } else if (code == KCTRL_RESEND) {
+      continue;
       outb(KEYB_PORT, last_command);
       break;
     } else if (code == 0x7f) {
       //heh?
+      //break;
       continue;
     }
     
@@ -118,12 +125,12 @@ void _isr_handler1() {
       code = ch;
     }
     
-    if (code != _last_tty_debug_chr) {
+    if (0) { //code != _last_tty_debug_chr) {
       //terminal_set_debug(DEBUG_KEY, code, COLOR_LIGHT_BLUE);
       terminal_set_idebug(DEBUG_KEY, 5, code, COLOR_LIGHT_BLUE);
-      e9printf("got a key! %d\n", code);
+      //e9printf("got a key! %d\n", code);
+      //_keydriver_isr0_flag = 1;
       
-      _keydriver_isr0_flag = 1;
       /*
       Task *nexttask = k_curtaskp;
       
@@ -149,7 +156,7 @@ void _isr_handler1() {
   } while (code != lastcode && kb_queue_b < QUEUESIZE-1);
   
   //interrupts_enable();
-  safe_exit(state);
+  //safe_exit(state);
 }
 
 static int keyboard_handle_mods(int c) {
@@ -210,6 +217,20 @@ static int keyboard_handle_toggles(int c) {
   }
   
   return 1;
+}
+
+int keyboard_casepoll() {
+  short code = keyboard_poll();
+  
+  if (code <= 0)
+    return code;
+  
+  unsigned char ch = code & 127;
+  
+  if (keyboard_isprint(ch) || ch == '\n' || ch == '\r' || ch == '\t')
+    ch = keyboard_handle_case(ch);
+  
+  return ch | (code & 128);
 }
 
 int keyboard_poll() {

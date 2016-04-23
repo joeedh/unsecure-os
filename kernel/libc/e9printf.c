@@ -12,6 +12,17 @@
 #define PUTCHAR(ch) outb(0xE9, ch)
 #define KPRINTNUMARG NULL
 
+//#define DISABLE_E9PRINTF
+
+#ifdef DISABLE_E9PRINTF
+int vs_e9printf(const unsigned char *args, va_list vl) {
+  return 0;
+}
+int e9printf(char *fmt, ...) {
+  return 0;
+}
+#else
+ 
 #include "vprintf.h"
 
 int e9printf(char *fmt, ...) {
@@ -23,3 +34,4 @@ int e9printf(char *fmt, ...) {
   
   return ret;
 }
+#endif

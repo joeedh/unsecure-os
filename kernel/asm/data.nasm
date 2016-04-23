@@ -1,39 +1,28 @@
-section .gdt, nobits
-global __k_gdt;
+section .text, nobits
+global emergency_proc_exit_stack
 
-__k_gdt:
+;small stack for emergency_proc_exit
+resb 1024*64
+emergency_proc_exit_stack:
+
+section .gdt, nobits
+global thegdt;
+
+thegdt:
 align 8
-resb 8*8
-global __k_gdt_end;
-__k_gdt_end:
+resb 8*(1+GDT_ENTRIES)
+global thegdt_end;
+thegdt_end:
 
 section .text
 align 8
-global tasks, terminal_buffer
-
-terminal_buffer: align 8
-reszero(VGA_HEIGHT*VGA_WIDTH*2)
-
-global terminal_history, terminal_linelasts;
-
-terminal_history: align 8;
-  reszero(TTY_BUFFER_ROWS*VGA_WIDTH*2)
-terminal_linelasts: align 8;
-  reszero(TTY_BUFFER_ROWS)
-tasks: align 8
-  reszero(TASK_SIZE*MAX_TASKS)
-tasks_end:
-
-global processes;
-processes: align 8
-  reszero(PROCESS_SIZE*MAX_TASKS)
-processes_end:
 
 global tss_stack_top, tss_stack_bottom;
 
 tss_stack_bottom: align 8
 reszero(65536)
 tss_stack_top:
+reszero(32);
 
 section .irq.table, nobits
 global idt_table;

@@ -7,8 +7,8 @@
 
 typedef uint8_t GDTRecord[8];
 
-extern GDTRecord __k_gdt[GDT_SIZE];
-//int __k_gdt_size = sizeof(GDTRecord) / 8;
+extern GDTRecord thegdt[GDT_SIZE];
+//int thegdt_size = sizeof(GDTRecord) / 8;
 
 //void create_descriptor(uint32_t base, uint32_t limit, uint16_t flag)
 void gdt_encode2(uint8_t *target, struct GDT *source)
@@ -112,7 +112,7 @@ void gdt_decode(uint8_t *target, struct GDT *source)
 
 #define GDT_INIT(base1, limit1, type1)\
   gdt.base = base1; gdt.limit = limit1; gdt.type = type1;\
-  gdt_encode(__k_gdt[i++], &gdt);
+  gdt_encode(thegdt[i++], &gdt);
   
 
 TSS myTss;
@@ -135,7 +135,7 @@ void gdt_initialize() {
   int i=0;
   
   memset((void*) &myTss, 0, sizeof(myTss));
-  memset(__k_gdt, 0, sizeof(__k_gdt));
+  memset(thegdt, 0, sizeof(thegdt));
   
   unsigned int *stack = (unsigned int*)tss_stack_top;
   
@@ -143,23 +143,35 @@ void gdt_initialize() {
   *stack-- = 0x08;
   *stack-- = (unsigned int)gdt_tss_callback;
   
-  myTss.esp0 = (unsigned long) stack;
+  myTss.esp0 = (unsigned long)stack;
+  //myTss.ss0 = 0x10;
   
   //unsigned long isr_len = (unsigned long)isr_end - (unsigned long)isr_1;
+  
+  uintptr_t tssa = (uintptr_t)&myTss;
+  //uintptr_t tssb = tssa + sizeof(TSS);
   
   GDT_INIT(0, 0, 0);// Selector 0x00 cannot be used
   GDT_INIT(0, 0xffffffff, 0x9A);// Selector 0x08 will be our code
   GDT_INIT(0, 0xffffffff, 0x92);// Selector 0x10 will be our data
-  GDT_INIT((GDTPtrInt)&myTss, sizeof(myTss), 0x89);// You can use LTR(0x18)
-  GDT_INIT(0, 0xffffffff, 0x89);
+  GDT_INIT(tssa, sizeof(TSS), 0x89);// You can use LTR(0x18)
+  GDT_INIT(0, 0xffffffff, 0x9A);
+  GDTEntry *e;
   
-  //*
-  GDTEntry *e = ((GDTEntry*)__k_gdt) + 4;
-  
-  e->s = 1;
-  e->dpl = 0;
+  //tss
+  e = ((GDTEntry*)thegdt) + 3;
   e->db = 1; //32 bit segment
-  e->type = 14;//*/
+  
+  //interrupts
+  e = ((GDTEntry*)thegdt) + 4;
+  
+  e->s = 1; 
+  e->dpl = 0; 
+  e->db = 1; //32 bit segment
+  e->type = 14;
+  
+  //e = ((GDTEntry*)thegdt) + 3;
+  //e9printf("TYPE: %d\n", (int)e->type);
   
   _setGDT_prot2();
 }

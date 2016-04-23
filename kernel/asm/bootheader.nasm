@@ -28,14 +28,17 @@ dd -(0xE85250D6 + 16) ; checksum
 global _start, mb_tag1, mb_tag2
 
 mb_requested_tag:
-  mb2_tag 1, 0, 24
+  mb2_tag 1, 0, 28
   dd 6;
   dd 2;
   dd 4;
+  dd 8;
   dd 15;
   dd 10;
   dd 5;
-
+  
+  dd 0; align to 8 bytes
+  
 ;mb_loadinfo:
 ;  mb2_tag 2, 0, 16
 ;  dd 1024*1024
@@ -49,10 +52,14 @@ mb_entry:
   dd 0;
   
 ;mb2_tag 5, 0, 12 ; framebuffer
-;dd 120
-;dd 64
-;dd 0
-  
+dw 5
+dw 0
+dd 20
+dd 800
+dd 600
+dd 32
+dd 0
+
 ;mb_sentinel: align 4
   mb2_tag 0, 0, 0   ; null_terminated?
 

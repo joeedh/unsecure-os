@@ -7,6 +7,7 @@
 #include "../drivers/fs/fs_file.h"
 #include "../io.h"
 #include "../libc/libk.h"
+#include "../libc/string.h"
 #include "../libc/kmalloc.h"
 #include "rwlock.h"
 #include "../timer.h"
@@ -139,8 +140,8 @@ int posix_spawn(int *pid_out, const char *path, char *file_actions, char *attrp,
     return -1;
   }
   
-  size_t size = st.st_msize;
-  if (st.st_msize <= 0) {
+  size_t size = st.st_size;
+  if (st.st_size <= 0) {
     return -1;
   }
   
@@ -187,11 +188,19 @@ int posix_spawn(int *pid_out, const char *path, char *file_actions, char *attrp,
   
   //get argc
   int argc = 0;
-  while (argv[argc++]);
+  while (argv[argc]) {
+    argc++;
+  }
   
-  char *argvcpy = kmalloc(sizeof(void*)*(1+argc));
-  memcpy(argvcpy, argv, sizeof(void*)*argc);
-  argvcpy[argc] = 0;
+  char **argvcpy = kmalloc(sizeof(void*)*(1+argc));
+  
+  for (int i=0; i<argc; i++) {
+    argvcpy[i] = kmalloc(strlen(argv[i])+1);
+    strlcpy(argvcpy[i], argv[i], strlen(argv[i])+1);
+  }
+  
+  //NULL-terminate
+  argvcpy[argc] = NULL;
   
   ptrs[0] = (void*)stdout;
   ptrs[1] = (void*)stdin;
@@ -212,6 +221,12 @@ int posix_spawn(int *pid_out, const char *path, char *file_actions, char *attrp,
     return -1;
   }
 
+  strncpy(newp->working_path, p->working_path, sizeof(newp->working_path));
+  
+  process_set_stdin(newp, stdin);
+  process_set_stdout(newp, stdout);
+  process_set_stderr(newp, stderr);
+  
   process_set_finish(newp, _finishfunc);
   
   int newpid = newp->pid;

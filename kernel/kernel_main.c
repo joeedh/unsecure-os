@@ -17,12 +17,16 @@
 #include "libc/string.h"
 #include "libc/libk.h"
 #include "libc/kmalloc.h"
+#include "dmesg/dmesg.h"
 
 #include "task/task.h"
 #include "task/process.h"
 
+#include "SudoBios.h"
+
 extern void pci_initialize();
 extern void parse_bootinfo(void *bootinfo1);
+extern void fpu_initialize();
 
 volatile unsigned int enable_klock_debug;
 
@@ -70,7 +74,7 @@ void test_rootfs() {
   
   //rootfs->stat(rootfs, rootdevice, 2, &mstat, NULL);
   
-  //kprintf("stat size: %d\n", mstat.st_msize);
+  //kprintf("stat size: %d\n", mstat.st_size);
   //kprintf("totentries: %d\n", totentries);
   
   
@@ -122,9 +126,14 @@ void startup_kernel(void *bootinfo1) {
   
   e9printf("initializing gdt. . .\n");
   gdt_initialize();
+
+  e9printf("parsing boot info. . .\n");
+  parse_bootinfo(bootinfo1);
+
   libk_initialize();
+  kmalloc_init_with_holes();
+  dmesg_initialize();
   
-  /* Initialize terminal interface */
   e9printf("initializing multitasking. . .\n");
 
   e9printf("  timer. . .\n");
@@ -133,7 +142,12 @@ void startup_kernel(void *bootinfo1) {
   tasks_initialize();
   e9printf("  process. . .\n");
   process_initialize();
-
+  
+  e9printf("initializing framebuffer. . .\n");
+  extern void framebuffer_init();
+  framebuffer_init();
+  
+  /* Initialize terminal interface */
   e9printf("initializing terminal. . .\n");
   terminal_initialize();
   
@@ -148,16 +162,15 @@ void startup_kernel(void *bootinfo1) {
   e9printf("flush pending keyboard data. . .\n");
   keyboard_post_irq_enable();
   io_wait();
-
-  e9printf("parsing boot info. . .\n");
-  parse_bootinfo(bootinfo1);
-  kmalloc_init_with_holes();
   
   e9printf("initializing pci. . .\n");
   pci_initialize();
-
-  e9printf("testing kmalloc. . .\n");
-  test_kmalloc();
+  
+  e9printf("initializing the fpu. . .\n");
+  fpu_initialize();
+  
+  //e9printf("testing kmalloc. . .\n");
+  //test_kmalloc();
 
   e9printf("initializing filesystem. . .\n");
   filesystem_initialize();
@@ -168,8 +181,11 @@ void startup_kernel(void *bootinfo1) {
   setup_root();
   
   interrupts_enable();
-  e9printf("\ntesting file system code. . .\n");
-  test_rootfs();
+  //e9printf("\ntesting file system code. . .\n");
+  //test_rootfs();
+  
+  e9printf("loading SudoBios. . .\n");
+  SBIOS_init();
   
   e9printf("kernel startup complete.\n");
   kprintf("Kernel started\n Exception flag: %d\n", _cpu_exception_flag);
@@ -255,24 +271,42 @@ void kernel_main(void *bootinfo1) {
   }
   return;
   //*/
-  kprintf("sizeof(Task): %d\n", sizeof(Task));
-  kprintf("sizeof(Process): %d\n", sizeof(Process));
-  //test_kmalloc();
   
+  interrupts_disable();
+  
+  kprintf("sizeof(Task): %d\n", (int) sizeof(Task));
+  kprintf("sizeof(Process): %d\n", (int) sizeof(Process));
+  
+  kprintf("sizeof(TSS): %d\n", (int) sizeof(TSS));
+  e9printf("sizeof(TSS): %d\n", (int) sizeof(TSS));
+  
+  //test_kmalloc();
   //while (1) {
   //}
-  
   //test_kmalloc();
   
   //char *argv[] = {"yay", "one", "two", "three"};
   Process *proc = spawn_process("sh", 1, NULL, kcli_main); //4, argv, kcli_main);
   process_start(proc);
+
+  asm("CLI");
+  e9printf("KP: %p %p %p\n", k_curtaskp, k_curtaskp->next, k_curtaskp->next->next);
+  asm("STI");
+  //int i = 0;
+  
+  while (1) {
+    task_yield();
+
+    /*i = (i + 1) & ((1<<16)-1);
+    if (i == 0) {
+      e9printf("yay\n");
+    }*/
+  }
   
   //paranoia check to ensure interrupts are now enabled
   interrupts_enable();
   
   kprintf("Started task!\n");
-  
   terminal_flush();
   
   unsigned int last_tick = 0;
@@ -280,6 +314,13 @@ void kernel_main(void *bootinfo1) {
   
   debug_check_interrupts();
   interrupts_enable();
+  
+  asm("CLI");
+  e9printf("KP: %p %p %p\n", k_curtaskp, k_curtaskp->next, k_curtaskp->next->next);
+  asm("STI");
+  
+  while (1) {
+  }
   
   //kprintf("k_totaltasks: %d\n", k_totaltasks);
   while (1) {
@@ -320,7 +361,7 @@ int kernel_task2(int argc, char **argv) {
 }
 
 int kernel_task1(int argc, char **argv) {
-  extern unsigned char __k_gdt[][GDT_SIZE];
+  extern unsigned char thegdt[][GDT_SIZE];
   
 	/* Since there is no support for newlines in terminal_putchar
          * yet, '\n' will produce some VGA specific character instead.
@@ -374,7 +415,7 @@ int kernel_task1(int argc, char **argv) {
   
   kprintf("-->: |%d| \n", k_debug);
   
-  kprintf("gdt: %x %x\n", (unsigned int)addr, (unsigned int)__k_gdt);
+  kprintf("gdt: %x %x\n", (unsigned int)addr, (unsigned int)thegdt);
   char *gdt1 = (char*)addr;
   GDTEntry *entry = (GDTEntry*) addr;
   entry++;

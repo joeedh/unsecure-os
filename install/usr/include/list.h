@@ -10,9 +10,11 @@ typedef struct LinkNode {
   volatile void *data;
 } LinkNode;
 
+#ifndef LIST_DEFINED
 typedef volatile struct List {
   void *first, *last;
 } List;
+#endif
 
 void klist_append(List *list, void *vitem);
 void klist_prepend(List *list, void *vitem);

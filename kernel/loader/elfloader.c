@@ -7,6 +7,7 @@
 #include "../libc/libk.h"
 
 //#define ELF_DEBUG
+
 #ifdef ELF_DEBUG
 #define elfdebug(...) e9printf(__VA_ARGS__)
 #else

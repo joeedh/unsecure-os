@@ -5,6 +5,7 @@
 #include "drivers/keyboard/keyboard.h"
 #include "definitions/memory.h"
 #include "task/task.h"
+#include "task/process.h"
 #include "debug.h"
 
 #include "io.h"
@@ -13,8 +14,12 @@
 volatile unsigned int inside_irq;
 
 /*
-The PIC has an internal register called the IMR, or the Interrupt Mask Register. It is 8 bits wide. This register is a bitmap of the request lines going into the PIC. When a bit is set, the PIC ignores the request and continues normal operation. Note that setting the mask on a higher request line will not affect a lower line. Masking IRQ2 will cause the Slave PIC to stop raising IRQs.
+The PIC has an internal register called the IMR, or the Interrupt Mask Register. It is 8 bits wide. 
+This register is a bitmap of the request lines going into the PIC. When a bit is set, the PIC ignores
+the request and continues normal operation. Note that setting the mask on a higher request line will 
+not affect a lower line. Masking IRQ2 will cause the Slave PIC to stop raising IRQs.
 */
+
 void IRQ_set_mask(unsigned char IRQline) {
     uint16_t port;
     uint8_t value;
@@ -39,6 +44,7 @@ void IRQ_clear_mask(unsigned char IRQline) {
         port = PIC2_DATA;
         IRQline -= 8;
     }
+    
     value = inb(port) & ~(1 << IRQline);
     outb(port, value);        
 }
@@ -67,7 +73,9 @@ arguments:
 void PIC_remap(int offset1, int offset2)
 {
   unsigned char a1, a2;
- 
+  
+  asm("CLI"); //ensure interrupts are properly disabled
+  
   a1 = inb(PIC1_DATA);                        // save masks
   a2 = inb(PIC2_DATA);
  
@@ -147,11 +155,20 @@ void _exc_handler##n(unsigned int flag) {\
   _cpu_exception_flag |= 1<<n;\
 }
 
+#define KILLPROC_EXCEPTION(n) \
+extern void exr_##n();\
+void _exc_handler##n(unsigned int flag) {\
+  _cpu_exception_flag |= flag;\
+  e9printf("====Got exception " #n "=====\n");\
+  e9printinfo();\
+  emergency_proc_exit();\
+}
 
 #define DEATH_EXCEPTION(n) \
 extern void exr_##n();\
 void _exc_handler##n(unsigned int flag) {\
   _cpu_exception_flag |= flag;\
+  e9printf("====Got exception " #n "=====\n");\
   e9printinfo();\
   kerror(n, "Got exception " #n);\
 }
@@ -160,21 +177,22 @@ void _exc_handler##n(unsigned int flag) {\
 extern void exr_##n();\
 void _exc_handler##n(unsigned int flag) {\
   _cpu_exception_flag |= flag;\
+  e9printf("====Got exception " #n "=====\n");\
   e9printinfo();\
   e9printf("====Got exception " #n "=====\n");\
 }
 
-DEATH_EXCEPTION(0); //divide by zero #DE
+DEATH_EXCEPTION(0); //divide by zero         #DE
 
 EXC_HANDLE(1); //debug                       #DB
-EXC_HANDLE(2); //non-maskable interrupt      #NMI
+WARN_EXCEPTION(2); //non-maskable interrupt  #NMI
 WARN_EXCEPTION(3); //breakpoint              #BP
 WARN_EXCEPTION(4); //overflow                #OF
 WARN_EXCEPTION(5); //bound-range error       #BR
-DEATH_EXCEPTION(6); //invalid opcode         #UD
-DEATH_EXCEPTION(7); //device not available   #NM
+KILLPROC_EXCEPTION(6); //invalid opcode         #UD
+KILLPROC_EXCEPTION(7); //device not available   #NM
 WARN_EXCEPTION(8); //double fault            #DF
-EXC_HANDLE(9); //coprocessor segment overrun 
+WARN_EXCEPTION(9); //coprocessor segment overrun 
 WARN_EXCEPTION(10); //invalid tss            #TS
 WARN_EXCEPTION(11); //segment not present    #NP
 WARN_EXCEPTION(12); //stack error            #SS
@@ -185,7 +203,6 @@ WARN_EXCEPTION(16); //x87 fpu except pending #MF
 WARN_EXCEPTION(17); //alignment error        #AC
 WARN_EXCEPTION(18); //machine check          #MC
 
-//there are only seven of these, so just define table here
 void *excptrs[] = {
   exr_0,
   exr_1,
@@ -213,7 +230,7 @@ void *excptrs[] = {
 #define ISR_HANDLE(n) void _isr_handler##n() {\
 }
 
-//ISR_HANDLE(0);// <- timer
+//ISR_HANDLE(0); <- timer
 //ISR_HANDLE(1); <- keyboard
 ISR_HANDLE(2);
 ISR_HANDLE(3);
@@ -264,11 +281,11 @@ void interrupts_initialize() {
     
     idt_table[i2].offset1 = off1;
     idt_table[i2].offset2 = off2;
-    idt_table[i2].selector = 0x08;
+    idt_table[i2].selector = 0x20;
     idt_table[i2].p = 1;
     idt_table[i2].is32 = 1;
     
-    //interrupt gate : 0xE, 1
+    //interrupt gate : 0xE, 1 (might be 2, actually)
     //trap gate      : 0xF, 3
     
     idt_table[i2].gate_type = 3;
@@ -276,7 +293,6 @@ void interrupts_initialize() {
   }
   
   //exception handlers
-  //return;
   for (int i=0; i<tot_excptrs; i++) {
     unsigned short off1, off2;
     unsigned long off = (unsigned long)excptrs[i];

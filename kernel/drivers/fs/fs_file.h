@@ -41,11 +41,19 @@ extern void filesystem_initialize();
 
 int read(int fd, void *buf, unsigned int bytes);
 int write(int fd, void *buf, unsigned int bytes);
+int pread(int fd, void *buf, unsigned int bytes, unsigned int off);
+
 int flush(int fd);
 int pipe(int fds[2]);
 int open(const unsigned char *path, int modeflags);
 int close(int fd);
 int fstat(int fd, struct stat *out);
 int tell(int fd);
+int ftruncate(int fd, size_t size);
+
+void *mmap(void *addr, size_t length, int prot, int flags, int fd, int offset);
+int munmap(void *addr, size_t length);
+
+int lseek(int fd, int off, int whence);
 
 #endif /* _FS_FILE_H */

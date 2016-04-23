@@ -18,7 +18,7 @@ int shlex(char *line, char *outbuf[MAX_ARGV]) {
   
   outbuf[argc++] = 0;
   
-  return argc;
+  return argc - 1; //don't include null terminator
 }
 
 static unsigned int my_strhas(int ch, unsigned char *str) {

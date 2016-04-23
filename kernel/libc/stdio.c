@@ -1,7 +1,10 @@
 #include "stdint.h"
 #include "stddef.h"
 
+#define SKIP_DEF_TASK_YIELD
+#include "stdlib.h"
 #include "stdio.h"
+
 #include "../drivers/fs/fs_file.h"
 
 #ifndef __KERNEL_BUILD__
@@ -12,10 +15,16 @@
 extern void *pmalloc(size_t size);
 extern void pfree(void *ptr);
 
+#ifndef malloc
+#define malloc(size) _malloc(size, __FILE__, __LINE__)
+#endif
 void *_malloc(size_t size, char *file, int line) {
   return pmalloc(size);
 }
 
+#ifndef free
+#define free(ptr) _free(ptr, __FILE__, __LINE__)
+#endif
 void _free(void *ptr, char *file, int line) {
   if (!ptr)
     return;

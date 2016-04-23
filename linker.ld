@@ -16,10 +16,22 @@ SECTIONS
 	.text BLOCK(4K) : ALIGN(4K)
 	{
 		*(.multiboot)
+		*(.reserved_real16)
+	}
+  
+	.text BLOCK(4K) : ALIGN(4K)
+	{
 		*(.gdt)
-    *(.irq.table)
+	}
+	.text BLOCK(4K) : ALIGN(4K)
+	{
+		*(.irq.table)
+	}
+  
+	.text BLOCK(4K) : ALIGN(4K)
+	{
 		*(.text)
-    *(.code)
+		*(.code)
 	}
   
 	/* Read-only data. */

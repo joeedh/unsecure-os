@@ -41,10 +41,12 @@ int terminal_move_cursor(int delta);
 
 //resets hardware cursor to internal x/y cursor
 int terminal_reset_hcursor();
+
+//get and set hardware cursor
 int terminal_get_hcursor();
 int terminal_set_hcursor(int x, int y);
-void terminal_resetscroll();
 
+void terminal_resetscroll();
 int terminal_scroll(int delta);
 
 #define DEBUG_KEY  5

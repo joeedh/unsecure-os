@@ -4,19 +4,21 @@
 
 extern int main(int argc, char **argv);
 
-unsigned char **env;
+unsigned char **environ;
 
 FILE *stdin, *stdout, *stderr;
 FILE _stdin, _stdout, _stderr;
 SysCallPtr *syscalls;
+int errno;
 
 int _start(SysCallPtr *calltable, int sin, int sout, 
            int serr, char **argv, char **envv) 
 {
   syscalls = calltable;
   
-  env = (unsigned char**) envv;
+  environ = (unsigned char**) envv;
   
+  errno = 0;
   stdin = &_stdin;
   stdout = &_stdout;
   stderr = &_stderr;

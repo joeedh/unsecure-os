@@ -14,6 +14,10 @@ rm build/kernel.bin 2> /dev/null
 
 ./setup-userland.sh
 ./build-userland.sh
+
+echo "assemble SudoBios. . ."
+nasm kernel/SudoBios/SudoBios.asm -f bin -o install/lib/SudoBios.bin
+
 ./install-userland.sh
 ./package-tinyext2.sh
 
@@ -24,6 +28,7 @@ python datatoc.py install/bin/ls _test_elfdata _test_elfdata.c
 
 echo "assemble NASM code. . ."
 ./kernel/asm/build.sh
+
 #nasm -felf32 kernel/asm/core_x86.nasm -o core_x86.o
 
 #-fno-asynchronous-unwind-tables
@@ -32,16 +37,17 @@ echo "assemble NASM code. . ."
 echo "build kernel. . ."
 
 source ./cflags.sh
-i686-elf-gcc $CFLAGS _test_elfdata.c _tinyext2_fs.c kernel/syscalls/*.c kernel/loader/*.c kernel/drivers/pci/*.c kernel/drivers/blockdevice/*.c \
-              kernel/drivers/ext2/*.c kernel/*.c kernel/drivers/fs/*.c kernel/libc/*.c kernel/task/*.c \
-              kernel/drivers/tty/*.c kernel/drivers/keyboard/*.c -std=gnu99
+i686-elf-gcc $CFLAGS -O2 -D__KERNEL_BUILD__ _test_elfdata.c _tinyext2_fs.c kernel/syscalls/*.c kernel/loader/*.c kernel/drivers/pci/*.c kernel/drivers/blockdevice/*.c \
+              kernel/drivers/ext2/*.c kernel/*.c kernel/drivers/framebuffer/*.c kernel/drivers/vesa/*.c kernel/drivers/fs/*.c kernel/libc/*.c kernel/task/*.c \
+              kernel/drivers/tty/*.c kernel/drivers/keyboard/*.c kernel/sharedmem/*.c kernel/dmesg/*.c -std=gnu99
              
 
 echo "link kernel. . ."
 i686-elf-gcc -DINIT_SECTION_ASM_OP=.init -fno-omit-frame-pointer -funsigned-char -T linker.ld -o build/kernel.bin core_x86.o timer.o gdt.o kernel_main.o bootinfo.o \
-                                             interrupt_pointers.o interrupts.o libk.o list.o task.o process.o\
+                                             interrupt_pointers.o interrupts.o fpu.o libk.o list.o task.o process.o\
+                                             SudoBios.o framebuffer.o vesa.o framebuffer_tty.o shm.o shm_file.o\
                                              kmalloc.o printf.o tty.o keyboard.o memblock.o memory_file.o mempipe.o \
-                                             ext2.o blockdevice.o libc.o syscalls.o sprintf.o \
+                                             ext2.o blockdevice.o libc.o syscalls.o sprintf.o dmesg.o \
                                              fprintf.o stdio.o cli.o _test_elfdata.o vfprintf.o \
                                              pci.o e9printf.o path.o elfloader.o process_management.o \
                                              tty_file.o fs_file.o symbol_table_gen.o debug.o -ffreestanding -O2 -nostdlib  \

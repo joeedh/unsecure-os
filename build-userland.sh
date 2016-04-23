@@ -11,12 +11,21 @@ echo "compiling userland. . ."
 
 rm install/usr/lib/libc.a 2> /dev/null
 rm install/bin/ls 2> /dev/null
+rm install/bin/sh 2> /dev/null
+rm install/bin/env 2> /dev/null
+
+cp kernel/libc/string.h install/usr/include
+cp kernel/libc/stdio.h install/usr/include
+cp kernel/libc/stdlib.h install/usr/include
+cp kernel/drivers/fs/stat.h install/usr/include/sys
 
 $CC kernel/libc/crt0.c -o build/crt0.o
 $CC kernel/libc/libc.c -o build/user_libc.o
 $CC kernel/libc/vfprintf.c -o build/user_vfprintf.o
 $CC kernel/libc/fprintf.c -o build/user_fprintf.o
 $CC kernel/libc/stdio.c -o build/user_stdio.o
+$CC kernel/libc/stdenv.c -o build/user_stdenv.o
+$CC kernel/libc/dynstr.c -o build/user_dynstr.o
 
 #make dummy libg.a
 
@@ -33,7 +42,13 @@ cp build/libc.a install/usr/lib
 cp build/crt0.o .
 
 echo "compiling apps (such that they are)"
-i686-elf-gcc -O0 -Iinstall/usr/include apps/ls.c -fPIC -std=c99 -o install/bin/ls -ffreestanding \
+i686-elf-gcc -O1 -Iinstall/usr/include apps/ls.c -fPIC -std=c99 -o install/bin/ls -ffreestanding \
              -funsigned-char -lgcc -L install/usr/lib -L .
-i686-elf-gcc -O0 -Iinstall/usr/include apps/sh.c -fPIC -std=c99 -o install/bin/sh -ffreestanding \
+i686-elf-gcc -O1 -Iinstall/usr/include apps/sh.c -fPIC -std=c99 -o install/bin/sh -ffreestanding \
+             -funsigned-char -lgcc -L install/usr/lib -L .
+i686-elf-gcc -O1 -Iinstall/usr/include apps/env.c -fPIC -std=c99 -o install/bin/env -ffreestanding \
+             -funsigned-char -lgcc -L install/usr/lib -L .
+i686-elf-gcc -O1 -Iinstall/usr/include apps/echo.c -fPIC -std=c99 -o install/bin/echo -ffreestanding \
+             -funsigned-char -lgcc -L install/usr/lib -L .
+i686-elf-gcc -O1 -Iinstall/usr/include apps/t.c -fPIC -std=c99 -o install/bin/t -ffreestanding \
              -funsigned-char -lgcc -L install/usr/lib -L .

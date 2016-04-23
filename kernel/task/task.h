@@ -47,9 +47,11 @@ void next_task();
 
 struct Process;
 
+//implemented in core_x86.nasm
+void task_yield();
+
 //Task *task_get(int tid);
 void task_destroy(int tid, int retval, int wait_if_inside);
-void task_switch(volatile void *stack);
 int spawn_task(int argc, char **argv, int (*main)(int argc, char **argv),
                 void (*finishcb)(int retval, int tid, int pid), struct Process *proc);
 
@@ -61,42 +63,7 @@ volatile Task *get_next_task_timer();
 
 extern volatile unsigned int kernel_tick;
 
-static inline void task_sleep(unsigned int ms) {
-  //asm("cli");
-  //k_curtaskp->sleep = ms;
-  //interrupts_enable();
-  
-  /*
-  asm("cli");
-  
-  k_curtaskp->sleep = ms; //XXX detect if timer isn't in milisecond mode
-  task_switch(get_next_task());
-  
-  //asm("int 0x0");
-  
-  interrupts_enable();
-  //*/
-}
-
-static inline void task_sleep2(unsigned int ms) {
-//  task_switch(k_curtaskp->next);
+//static inline void task_sleep(unsigned int ms) {
 //}
-#if 1
-  //*
-  volatile unsigned int start_tick = kernel_tick;
-  volatile unsigned int tick = start_tick;
-  
-#if TICKS_PER_SECOND != 1000
-  ms /= (1000/TICKS_PER_SECOND);
-#endif
-  
-  do {
-    tick = kernel_tick;
-    
-    task_switch(k_curtaskp->next);
-  } while (tick - start_tick < ms);
-  //*/
-}
-#endif
 
 #endif /* _KTASK_H */

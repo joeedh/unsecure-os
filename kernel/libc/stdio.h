@@ -5,6 +5,10 @@
 #include <stdint.h>
 #include <stdarg.h>
 
+#define SEEK_SET  1
+#define SEEK_CUR  2
+#define SEEK_END  3
+
 typedef struct FILE {
   int fd;
 } FILE;
@@ -19,6 +23,11 @@ int printf(char *fmt, ...);
 
 int vfprintf(FILE *arg, char *args, va_list vl);
 
+#ifndef E9PRINTF_DEFINED
+#define E9PRINTF_DEFINED
+int e9printf(char *fmt, ...);
+#endif
+
 int fprintf(FILE *file, char *fmt, ...);
 int sprintf(char *buf, char *fmt, ...);
 int fflush(FILE *file);
@@ -32,12 +41,6 @@ int fgetc(FILE *file);
 int fputc(int ch, FILE *file);
 
 FILE *popen(const char *command, const char *mode);
-
-void *_malloc(size_t size, char *file, int line);
-void _free(void *ptr, char *file, int line);
-
-#define malloc(size) _malloc(size, __FILE__, __LINE__)
-#define free(ptr) _free(ptr, __FILE__, __LINE__)
 
 #define EOF (-1)
 

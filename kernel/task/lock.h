@@ -209,6 +209,7 @@ restart:
   
   if (lock->owner != tid) {
     //_lock_safe_exit(state);
+    task_yield();
     goto restart;
   }
   
