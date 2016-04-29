@@ -10,17 +10,18 @@
 #include "../../io.h"
 #include "../../interrupts.h"
 
+#include "../fs/stat.h"
 #include "../fs/fs_interface.h"
 #include "../fs/fs_file.h"
 
 typedef struct ProcDir {
-  int pid, i; //-1 means list all processes
+  int pid, i; //0 means list all processes, >0 is 1 + process pid
   int zombie;
-  int *pids, totpid; //used when pid is -1
+  int *pids, totpid; //used when pid is 0
 } ProcDir;
 
 typedef struct ProcFile {
-  int pid, tid, type;
+  int pid, tid, type, isdir;
 } ProcFile;
 
 typedef struct ProcFS {
@@ -30,6 +31,7 @@ typedef struct ProcFS {
 
 //procfile->type
 enum {
+  PROC_DIRLIST,
   PROC_NAME,
   PROC_RUNTIME,
   PROC_STATE,
@@ -43,8 +45,18 @@ char *mystrdup(const char *str) {
   return ret;
 }
 
-static char *procfs_getdata_name(ProcFile *file) {
+static char *procfs_getdata_dirlist(ProcFile *file) {
   return mystrdup("nothing");
+}
+static char *procfs_getdata_name(ProcFile *file) {
+  e9printf("pid: %d\n", file->pid);
+  Process *p = process_from_pid(file->pid, 0);
+  
+  if (!p) {
+    return mystrdup("(dead process)");
+  }
+  
+  return mystrdup(p->name);
 }
 static char *procfs_getdata_runtime(ProcFile *file) {
   return mystrdup("nothing");
@@ -62,6 +74,7 @@ static struct {
   //make sure to free afterwards
   char *(*getdata)(ProcFile *file);
 } commandmap[] = {
+  {".", procfs_getdata_dirlist},
   {"name", procfs_getdata_name},
   {"runtime", procfs_getdata_runtime},
   {"state", procfs_getdata_state},
@@ -75,6 +88,14 @@ static int parse_path(ProcFS *fs, const char *path, ProcFile *file) {
   unsigned char *c = (unsigned char*) path;
   int len;
   
+  file->isdir = 0;
+  
+  if (path[0]==0 || (path[0] == '/' && path[1] == 0)) {
+    file->pid = file->type = 0;
+    file->isdir = 1;
+    return 0; //procfs root directory
+  }
+  
   c += strspn(c, "\r\n\t\b\v /");
   
   if (!*c) {
@@ -83,16 +104,27 @@ static int parse_path(ProcFS *fs, const char *path, ProcFile *file) {
   }
   
   int pid = atoi(c);
-  if (pid == 0) {
-    _fs_error(fs, -1, "bad pid");
-    return -1;
-  }
+  
+  e9printf("pidstr: %s %d\n", c, pid);
+  
+  //if (pid == 0 && strlen(c) > 1) {
+  //  _fs_error(fs, -1, "bad pid");
+  //  return -1;
+  //}
   
   file->pid = pid;
   c += strspn(c, "0123456789/");
    
   len = strcspn(c, "/");
   c[len] = 0;
+  
+  e9printf("final pidstr: '%s', pid: %d\n", c, pid);
+  
+  if (*c == 0) {
+    file->type = PROC_DIRLIST; //dirlist
+    file->isdir = 1;
+    return 0;
+  }
   
   int i = 0;
   
@@ -113,14 +145,18 @@ static int parse_path(ProcFS *fs, const char *path, ProcFile *file) {
 }
 
 static int encode_file(ProcFile *file) {
-  return file->pid | file->type<<22;
+  return file->pid | (file->type+1)<<22;
 }
 
 static int decode_file(int fd, ProcFile *file) {
   file->pid = fd & ((1<<22)-1);
-  file->type = fd>>22;
+  file->type = (fd>>22)-1;
   
   return file->type >= 0 && file->type <= totcommand ? 0 : -1;
+}
+
+static int procfs_close(void *vself, BlockDeviceIF *device, int fd) {
+  return 0;
 }
 
 static int procfs_open(void *vself, BlockDeviceIF *device, const char *utf8path, int utf8path_size, int oflag) {
@@ -168,11 +204,27 @@ static int procfs_pread(void *vself, BlockDeviceIF *device, int internalfd, cons
 }
 
 static int procfs_path_to_inode(void *self, BlockDeviceIF *device, const char *utf8path, int utf8path_size) {
+  if (!utf8path[0] || (utf8path[0] == '/' && utf8path[1] == 0)) {
+    return 0; //procfs root directory
+  }
+  
   return procfs_open(self, device, utf8path, utf8path_size, O_RDONLY);
 }
 
 static int procfs_stat(void *vself, BlockDeviceIF *device, int inode, struct stat *buf) {
   ProcFile file = {0};
+  
+  e9printf("procfs_stat, inode: %d\n", inode);
+  
+  if (inode == 0) {
+    memset(buf, 0, sizeof(*buf));
+    
+    buf->st_ino = inode;
+    buf->st_size = 0;
+    buf->st_mode = S_IFDIR;
+    
+    return 0;
+  }
   
   if (decode_file(inode, &file) < 0) {
     _fs_error(vself, -1, "invalid file descriptor");
@@ -185,6 +237,8 @@ static int procfs_stat(void *vself, BlockDeviceIF *device, int inode, struct sta
   
   buf->st_ino = inode;
   buf->st_size = !data ? 0 : strlen(data);
+  if (file.isdir)
+    buf->st_mode = S_IFDIR;
   
   kfree(data);
   
@@ -205,9 +259,7 @@ static int procfs_opendir_inode(void *vself, BlockDeviceIF *device, DIR *vdir, i
   
   memset(dir, 0, sizeof(dir));
   
-  dir->pid = inode; //-1 means list root procfs directory
-  
-  if (inode == -1) {
+  if (inode == 0) {
     int size = 32;
     dir->pids = kmalloc(sizeof(int)*size);
     dir->totpid = 0;
@@ -229,6 +281,14 @@ static int procfs_opendir_inode(void *vself, BlockDeviceIF *device, DIR *vdir, i
       dir->pids[dir->totpid++] = p->pid;
     }
     krwlock_unrlock(&_procsys_lock);
+  } else {
+    ProcFile file = {0,};
+    
+    if (decode_file(inode, &file) < 0) {
+      return -1;
+    }
+    
+    dir->pid = file.pid+1;
   }
   
   return 0;
@@ -259,7 +319,7 @@ int procfs_readdir(void *vself, BlockDeviceIF *device, struct dirent *entry, DIR
     return -1;
   }
   
-  if (dir->pid == -1) {
+  if (dir->pid == 0) {
     if (dir->i >= dir->totpid) {
       return -1; //end of directory stream
     }
@@ -274,11 +334,13 @@ int procfs_readdir(void *vself, BlockDeviceIF *device, struct dirent *entry, DIR
     }
     
     ProcFile file = {0,};
-    file.pid = dir->pid;
+    file.pid = dir->pid-1;
     file.type = dir->i;
     
     strlcpy(entry->d_name, commandmap[dir->i].name, sizeof(entry->d_name));
     entry->d_ino = encode_file(&file);
+    
+    dir->i++;
   }
   
   return 0;
@@ -286,7 +348,7 @@ int procfs_readdir(void *vself, BlockDeviceIF *device, struct dirent *entry, DIR
 
 static int procfs_opendir(void *vself, BlockDeviceIF *device, DIR *dir, const char *path) {
   if (*path == 0 || (*path == '/' && strlen(path) == 1)) {
-    return procfs_opendir_inode(vself, device, dir, -1);
+    return procfs_opendir_inode(vself, device, dir, 0);
   } else {
     ProcFile file = {0,};
     
@@ -305,12 +367,14 @@ FSInterface *init_procfs() {
   
   procfs.head.accessmode = procfs_accessmode;
   procfs.head.open = procfs_open;
+  procfs.head.close = procfs_close;
   procfs.head.pread = procfs_pread;
   procfs.head.path_to_inode = procfs_path_to_inode;
   procfs.head.stat = procfs.head.fstat = procfs_stat;
   
   procfs.head.readdir = procfs_readdir;
   procfs.head.opendir = procfs_opendir;
+  procfs.head.opendir_inode = procfs_opendir_inode;
   procfs.head.closedir = procfs_closedir;
   
   return (FSInterface*)&procfs;

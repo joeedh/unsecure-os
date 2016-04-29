@@ -92,10 +92,10 @@ int kcli_main(int argc, char **argv) {
   
   //make libc wrapper of stdout/stderr
   FILE _file = {proc->stdout};
-  //FILE _errfile = {proc->stderr};
+  FILE _errfile = {proc->stderr};
   
   FILE *stdout = &_file;
-  //FILE *stderr = &_errfile;
+  FILE *stderr = &_errfile;
  
   debug_check_interrupts();
   
@@ -108,9 +108,9 @@ int kcli_main(int argc, char **argv) {
     int _i=0;
     
     while (_i++ < 100) {
-      //printcode = fgetc(stderr);
-      //if (printcode == EOF)
-      printcode = fgetc(stdout);
+      printcode = fgetc(stderr);
+      if (printcode == EOF)
+        printcode = fgetc(stdout);
       
       if (printcode != EOF) {
         terminal_putchar(printcode);

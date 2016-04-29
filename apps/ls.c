@@ -36,6 +36,11 @@ int main(int argc, char **argv) {
   fprintf(stdout, "\n");
   
   dir = opendir(path);
+  if (!dir) {
+    fprintf(stderr, "Unknown directory %s\n", path);
+    return -1;
+  }
+  
   //e9printf("dir: %x\n", dir);
   
   struct stat st;

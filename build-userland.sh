@@ -27,6 +27,7 @@ $CC kernel/libc/stdio.c -o build/user_stdio.o
 $CC kernel/libc/stdenv.c -o build/user_stdenv.o
 $CC kernel/libc/dynstr.c -o build/user_dynstr.o
 $CC kernel/libc/string.c -o build/user_string.o
+$CC kernel/libc/sprintf.c -o build/user_sprintf.o
 
 #make dummy libg.a
 
@@ -54,4 +55,6 @@ i686-elf-gcc -O1 -Iinstall/usr/include apps/echo.c -fPIC -std=c99 -o install/bin
 i686-elf-gcc -O1 -Iinstall/usr/include apps/t.c -fPIC -std=c99 -o install/bin/t -ffreestanding \
              -funsigned-char -lgcc -L install/usr/lib -L .
 i686-elf-gcc -O1 -Iinstall/usr/include apps/cat.c -fPIC -std=c99 -o install/bin/cat -ffreestanding \
+             -funsigned-char -lgcc -L install/usr/lib -L .
+i686-elf-gcc -O1 -Iinstall/usr/include apps/ps.c -fPIC -std=c99 -o install/bin/ps -ffreestanding \
              -funsigned-char -lgcc -L install/usr/lib -L .

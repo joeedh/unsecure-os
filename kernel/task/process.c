@@ -83,6 +83,7 @@ void process_initialize() {
   process->pid = 0;
   process->state = PROC_RUNNING;
   process->finishfunc = _nullop_proc_finishfunc;
+  strcpy(process->name, "[idle task]");
   
   LinkNode *node = &kernelproc_thread;
   node->data = (Task*) k_curtaskp->tid; //initial thread
@@ -278,7 +279,8 @@ void _process_finish(int retval, int tid, int pid) {
   ProcFinishFunc finishfunc = p->finishfunc;
   UNLOCK_PROCSYS
   
-  finishfunc(retval, tid, pid);  
+  finishfunc(retval, tid, pid);
+  free_process(p);
 }
 
 int process_start(Process *process) {

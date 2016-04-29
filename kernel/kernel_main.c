@@ -297,7 +297,7 @@ void kernel_main(void *bootinfo1) {
   //test_kmalloc();
   
   //char *argv[] = {"yay", "one", "two", "three"};
-  Process *proc = spawn_process("sh", 1, NULL, kcli_main); //4, argv, kcli_main);
+  Process *proc = spawn_process("tty", 1, NULL, kcli_main); //4, argv, kcli_main);
   process_start(proc);
 
   asm("CLI");

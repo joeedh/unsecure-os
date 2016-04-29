@@ -43,14 +43,20 @@ int fs_vfs_add(char *prefix, FSInterface *fs, BlockDeviceIF *device) {
   return 0;
 }
 
-int fs_vfs_get(const char *path, FSInterface **fs, BlockDeviceIF **device) {
+int fs_vfs_get(char *path, FSInterface **fs, BlockDeviceIF **device) {
+  int i;
+  
   *fs = rootfs;
   *device = rootdevice;
+  
+  if (!path) {
+    return -1;
+  }
   
   int max_match = 0, max=-1;
   int len = strlen(path);
   
-  for (int i=0; i<vfs_table_size; i++) {
+  for (i=0; i<vfs_table_size; i++) {
     int len2 = strlen(vfs_table[i].prefix);
     int j=0;
     
@@ -74,8 +80,15 @@ int fs_vfs_get(const char *path, FSInterface **fs, BlockDeviceIF **device) {
   if (max != -1) {
     e9printf("Found a virtual file system device: %s\n", vfs_table[max_match].prefix);
     
+    for (i=0; i<len-max; i++) {
+      path[i] = path[i+max];
+    }
+    path[i] = 0;
+    
     *fs = vfs_table[max_match].fs;
     *device = vfs_table[max_match].device;
+    
+    e9printf("  final path: '%s'\n", path);
   }
   
   return 0;
@@ -439,30 +452,34 @@ int tell(int fd) {
 }
 
 int stat(const char *path, struct stat *out) {
-  if (!out)
+  unsigned char path2[MAX_PATH];
+  FSInterface *fs=NULL;
+  BlockDeviceIF *device=NULL;
+
+  if (!out || !path)
     return -1;
 
-  klock_lock(&rootdevice->lock);
-  klock_lock(&rootfs->lock);
-  
-  unsigned char path2[MAX_PATH];
   prepare_path(path, (unsigned char*)path2, sizeof(path2));
+  fs_vfs_get((char*) path2, &fs, &device);
+    
+  klock_lock(&device->lock);
+  klock_lock(&fs->lock);
   
-  int inode = rootfs->path_to_inode(rootfs, rootdevice, path2, strlen(path2));
+  int inode = fs->path_to_inode(fs, device, path2, strlen(path2));
   //e9printf("PATH: %s, PATH2: %s, INODE: %d\n", path, path2, inode);
 
   if (inode < 0) {
-    klock_unlock(&rootfs->lock);
-    klock_unlock(&rootdevice->lock);
+    klock_unlock(&fs->lock);
+    klock_unlock(&device->lock);
     return -1;
   }
   
-  int ret = rootfs->stat(rootfs, rootdevice, inode, out);
+  int ret = fs->stat(fs, device, inode, out);
   
   //e9printf("RET: %d, st_mode: %d\n", ret, out->st_mode);
   
-  klock_unlock(&rootfs->lock);
-  klock_unlock(&rootdevice->lock);
+  klock_unlock(&fs->lock);
+  klock_unlock(&device->lock);
   return ret;
 }
 
@@ -515,16 +532,19 @@ static int prepare_path(const unsigned char *pathin, unsigned char *pathout, int
 
 int open(const unsigned char *path, int modeflags) {
   unsigned char path2[MAX_PATH];
+  FSInterface *fs=NULL;
+  BlockDeviceIF *device=NULL;
   
   prepare_path(path, (unsigned char*)path2, sizeof(path2));
+  fs_vfs_get((char*) path2, &fs, &device);
   
   FSFile *file = kmalloc(sizeof(FSFile));
   
   memset(file, 0, sizeof(*file));
   _fs_file_init(file);
   
-  file->fs = rootfs;
-  file->device = rootdevice;
+  file->fs = fs;
+  file->device = device;
   file->access = modeflags;
   
   file->internalfd = file->fs->open(file->fs, file->device, path2, strlen(path2), modeflags);
@@ -551,9 +571,11 @@ int close(int fd) {
   
   file->closed = 1;
 
-  _lock_file(file);
-  file->fs->close(file->fs, file->device, file->internalfd);
-  _unlock_file(file);
+  if (file->fs->close) {
+    _lock_file(file);
+    file->fs->close(file->fs, file->device, file->internalfd);
+    _unlock_file(file);
+  }
 
   Process *p = process_get_current(0);
   LinkNode *node;
@@ -577,49 +599,62 @@ DIR *opendir(const unsigned char *path) {
     return NULL;
   
   unsigned char path2[MAX_PATH];
+  FSInterface *fs=NULL;
+  BlockDeviceIF *device=NULL;
   
-  //strncpy(path2, path, sizeof(path2));
-  //normpath(path2, sizeof(path2));
   prepare_path(path, (unsigned char*)path2, sizeof(path2));
-    
-  BlockDeviceIF *device = rootdevice;
-  FSInterface *fs = rootfs;
+  fs_vfs_get((char*) path2, &fs, &device);
   
   if (bad_fsdev(fs, device)) {
-    kprintf("File system driver corruption!\n");
+    kprintf("File system driver corruption! 1\n");
     return NULL;
   }
 
-  klock_lock(&rootdevice->lock);
-  klock_lock(&rootfs->lock);
-  
-  int inode = fs->path_to_inode(fs, device, path2, strlen(path2));
-  if (inode < 0) {
-    klock_unlock(&rootfs->lock);
-    klock_unlock(&rootdevice->lock);
+  if (!fs->opendir_inode) {
+    kprintf("opendir not supported");
     return NULL;
   }
   
-  DIR *ret = opendir_inode(inode);
+  klock_lock(&device->lock);
+  klock_lock(&fs->lock);
   
-  klock_unlock(&rootfs->lock);
-  klock_unlock(&rootdevice->lock);
+  int inode = fs->path_to_inode(fs, device, path2, strlen(path2));
+  
+  if (inode < 0) {
+    klock_unlock(&fs->lock);
+    klock_unlock(&device->lock);
+    return NULL;
+  }
+  
+  //allocate dirent and DIR in a single block
+  DIR *ret = NULL;
+  
+  uintptr_t addr = (uintptr_t) kmalloc(sizeof(DIR) + sizeof(dirent));
+  addr += sizeof(dirent);
+  ret = (DIR*)addr;
+  memset(ret, 0, sizeof(ret));
+  
+  fs->opendir_inode(fs, device, ret, inode);
+  
+  klock_unlock(&fs->lock);
+  klock_unlock(&device->lock);
   
   FSFile *dirfile = kmalloc(sizeof(FSFile));
   memset(dirfile, 0, sizeof(*dirfile));
-  dirfile->fs = rootfs;
-  dirfile->device = rootdevice;
+  dirfile->fs = fs;
+  dirfile->device = device;
   ret->dirfd = (int)dirfile;
   
   return ret;
 }
 
+//XXX eek! this won't work with vfs, will it?
 DIR *opendir_inode(int inode) {
   BlockDeviceIF *device = rootdevice;
   FSInterface *fs = rootfs;
   
   if (bad_fsdev(fs, device)) {
-    kprintf("File system driver corruption!\n");
+    kprintf("File system driver corruption! 2\n");
     return NULL;
   }
   
@@ -652,32 +687,43 @@ DIR *opendir_inode(int inode) {
 }
 
 int closedir(DIR *dir) {
-  if (bad_fsdev(rootfs, rootdevice)) {
-    kprintf("File system driver corruption!\n");
+  if (!dir) {
     return -1;
   }
   
   FSFile *dirfile = (FSFile*) dir->dirfd;
+  FSInterface *fs = dirfile->fs;
+  BlockDeviceIF *device = dirfile->device;
+  
+  if (bad_fsdev(fs, device)) {
+    kprintf("File system driver corruption! 3\n");
+    return -1;
+  }
+
   kfree(dirfile);
   dir->dirfd = 0;
   
-  klock_lock(&rootfs->lock);
-  klock_lock(&rootdevice->lock);
+  klock_lock(&fs->lock);
+  klock_lock(&device->lock);
   
   uintptr_t addr = (uintptr_t) dir;
   addr -= sizeof(dirent);
   
   kfree((void*)addr);
 
-  klock_unlock(&rootdevice->lock);
-  klock_unlock(&rootfs->lock);
+  klock_unlock(&device->lock);
+  klock_unlock(&fs->lock);
   
   return 0;
 }
 
 struct dirent *readdir(DIR *dir) {
-  if (bad_fsdev(rootfs, rootdevice)) {
-    kprintf("File system driver corruption!\n");
+  FSFile *dirfile = (FSFile*) dir->dirfd;
+  FSInterface *fs = dirfile->fs;
+  BlockDeviceIF *device = dirfile->device;
+  
+  if (bad_fsdev(fs, device)) {
+    kprintf("File system driver corruption! 4\n");
     return NULL;
   }
   
@@ -688,10 +734,7 @@ struct dirent *readdir(DIR *dir) {
   
   struct dirent *entry = (struct dirent*) dir;
   entry--;
- 
-  BlockDeviceIF *device = rootdevice;
-  FSInterface *fs = rootfs;
-  
+   
   klock_lock(&device->lock);
   klock_lock(&fs->lock);
   
@@ -710,8 +753,12 @@ struct dirent *readdir(DIR *dir) {
 }
 
 void rewinddir(DIR *dir) {
-  if (bad_fsdev(rootfs, rootdevice)) {
-    kprintf("File system driver corruption!\n");
+  FSFile *dirfile = (FSFile*) dir->dirfd;
+  FSInterface *fs = dirfile->fs;
+  BlockDeviceIF *device = dirfile->device;
+  
+  if (bad_fsdev(fs, device)) {
+    kprintf("File system driver corruption! 5\n");
     return;
   }
 }
