@@ -51,9 +51,15 @@ static RWLock retcache_lock;
 static void _nullop_proc_finishfunc(int retval, int tid, int pid) {
 }
 
+volatile int _process_initialized = 0;
+
+void process_finishinit() {
+  _process_initialized = 1;
+}
+
 void process_initialize() {
   pidgen = 1;
-
+  
   krwlock_init(&retcache_lock);
   krwlock_init(&_procsys_lock);
   
@@ -89,7 +95,7 @@ void process_initialize() {
 
 Process *process_from_pid(intptr_t pid, int ignorelock) {
   if (!ignorelock) {
-    krwlock_rlock(&_procsys_lock);
+    RLOCK_PROCSYS
   }
   
   Process *p = NULL;
@@ -100,13 +106,15 @@ Process *process_from_pid(intptr_t pid, int ignorelock) {
   }
   
   if (!ignorelock) {
-    krwlock_unrlock(&_procsys_lock);
+    UNRLOCK_PROCSYS
   }
   
   return p;
 }
 
-Process *process_get_current() {
+Process *process_get_current(int skiplocks) {
+  //skiplocks doesn't apply to safe_entry
+  //it's for if we lock _procsys_lock in the future
   volatile unsigned int state = safe_entry();
 
   Process *ret = (Process*) k_curtaskp->proc;
@@ -128,7 +136,7 @@ int process_get_stderr(Process *p) {
 }
 
 static Process *alloc_process() {
-  krwlock_lock(&_procsys_lock);
+  LOCK_PROCSYS
   
   Process *p = NULL;
   int i = 0;
@@ -144,18 +152,18 @@ static Process *alloc_process() {
   }
   
   if (i == MAX_TASKS) {
-    krwlock_unlock(&_procsys_lock);
+    UNLOCK_PROCSYS
 
     e9printf("Hit maximum number of processes!\n");
     return NULL;
   }
   
-  krwlock_unlock(&_procsys_lock);
+  UNLOCK_PROCSYS
   return processes + i;
 }
 
 static void free_process(Process *p) {
-  krwlock_lock(&_procsys_lock);
+  LOCK_PROCSYS
   int found = 0;
   
   for (int i=0; i<MAX_TASKS; i++) {
@@ -167,7 +175,7 @@ static void free_process(Process *p) {
   }
   
   if (!found) {
-    krwlock_unlock(&_procsys_lock);
+    UNLOCK_PROCSYS
   
     e9printf("FAILED TO FREE PROCESS STRUCT\n");
     return;
@@ -176,14 +184,14 @@ static void free_process(Process *p) {
   //clear p->used
   p->used = 0;
   
-  krwlock_unlock(&_procsys_lock);
+  UNLOCK_PROCSYS
 }
 
 //returns. . .pid?
 Process *spawn_process(const char *name, int argc, char **argv, int (*main)(int argc, char **argv)) {
   procdebug("creating new process\n");
   
-  krwlock_lock(&_procsys_lock);
+  LOCK_PROCSYS
   
   Process *process = alloc_process(); //kmalloc(sizeof(Process));
 
@@ -205,7 +213,7 @@ Process *spawn_process(const char *name, int argc, char **argv, int (*main)(int 
   
   strncpy(process->name, name, sizeof(process->name));
   
-  krwlock_unlock(&_procsys_lock);
+  UNLOCK_PROCSYS
   return process;
 }
 
@@ -230,18 +238,17 @@ int process_set_finish(Process *process, void *finishfunc) {
 }
 
 void _process_finish(int retval, int tid, int pid) {
-  krwlock_lock(&_procsys_lock);
-
-  procdebug("process finish: retval: %d, tid: %d, pid: %d\n", retval, tid, pid);
-  
-  Process *p = process_from_pid(pid, 0);
-
   int didlock = 0;
   
   if (have_interrupts()) {
     didlock = 1;
     krwlock_lock(&retcache_lock);
   }
+
+  LOCK_PROCSYS
+
+  procdebug("process finish: retval: %d, tid: %d, pid: %d\n", retval, tid, pid);
+  Process *p = process_from_pid(pid, 0);
   
   //cache pid for if we need it later
   retcache[retcache_cur++] = pid;
@@ -257,7 +264,7 @@ void _process_finish(int retval, int tid, int pid) {
     e9printf("    reval: %x, tid: %x, pid: %x\n", retval, tid, pid);
     e9printf("KERNEL ERROR: process_from_pid returned NULL!\n");
     
-    krwlock_unlock(&_procsys_lock);
+    UNLOCK_PROCSYS
     return;
   }
 
@@ -268,12 +275,14 @@ void _process_finish(int retval, int tid, int pid) {
 
   p->retval = retval;
 
-  krwlock_unlock(&_procsys_lock);
-  p->finishfunc(retval, tid, pid);  
+  ProcFinishFunc finishfunc = p->finishfunc;
+  UNLOCK_PROCSYS
+  
+  finishfunc(retval, tid, pid);  
 }
 
 int process_start(Process *process) {
-  krwlock_lock(&_procsys_lock);
+  LOCK_PROCSYS
   
   procdebug("starting process. . .\n");
   
@@ -305,7 +314,7 @@ int process_start(Process *process) {
   //e9printf("  finish: %x\n", _process_finish);
   //e9printf("  pid   : %x\n", process->pid);
   
-  krwlock_unlock(&_procsys_lock);
+  UNLOCK_PROCSYS
   
   procdebug("spawning process task. . .\n");
   thread->data = (void*) spawn_task(process->argc, process->argv, process->entryfunc, _process_finish, process);
@@ -314,10 +323,10 @@ int process_start(Process *process) {
 }
 
 int process_close(Process *process) {
-  krwlock_lock(&_procsys_lock);
+  LOCK_PROCSYS
 
   if (process->state & PROC_ZOMBIE) {
-    krwlock_unlock(&_procsys_lock);
+    UNLOCK_PROCSYS
     return -1;
   }
 
@@ -327,6 +336,12 @@ int process_close(Process *process) {
     next = node->next;
     task_destroy((int)node->data, process->retval, 0);
     
+    kfree(node);
+  }
+  
+  for (node=process->open_files.first; node; node=next) {
+    next = node->next;
+    close((int)node->data);
     kfree(node);
   }
   
@@ -348,13 +363,13 @@ int process_close(Process *process) {
   
   free_process(process); //kfree(process);
   
-  krwlock_unlock(&_procsys_lock);
+  UNLOCK_PROCSYS
   
   return 0;
 }
 
 int print_procs(FILE *file) {
-  krwlock_rlock(&_procsys_lock);
+  RLOCK_PROCSYS
   unsigned char **lines = NULL;
   int totline = 0, totused=0;
   
@@ -370,7 +385,7 @@ int print_procs(FILE *file) {
     
     lines[totline++] = buf;
   }
-  krwlock_unrlock(&_procsys_lock);
+  UNRLOCK_PROCSYS
   
   fprintf(file, "=========Running processes============\n");
   for (int i=0; i<totline; i++) {
@@ -499,7 +514,7 @@ static int proc_stop_task(int argc, char **argv) {
 int _exit(int retval) {
   e9printf("_exit called!\n");
 
-  int pid = process_get_current()->pid;
+  int pid = process_get_current(0)->pid;
   
   //spawn an orphaned kernel task to kill the process
   spawn_task(pid, (char**)retval, proc_stop_task, NULL, &kernelproc);
@@ -513,5 +528,5 @@ int _exit(int retval) {
 }
 
 int getpid() {
-  return process_get_current()->pid;
+  return process_get_current(0)->pid;
 }

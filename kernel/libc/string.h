@@ -290,4 +290,7 @@ static inline int iswhitespace(int c) {
   return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\v';
 }
 
+int atoi(const char *str);
+int itoa(const char *str);
+
 #endif /* _STRING_H */

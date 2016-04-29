@@ -1,4 +1,5 @@
 //for printing via Boch's i/o port e9 hack
+//also prints to COM3 for good measure (and to work on virtualbox)
 
 #include "stdint.h"
 #include "string.h"
@@ -7,9 +8,11 @@
 #include "../interrupts.h"
 #include <stdarg.h>
 
+#define COM3 0x3E8
+
 #define COLOR_HANDLER
 #define PRINTF int vs_e9printf(const unsigned char *args, va_list vl)
-#define PUTCHAR(ch) outb(0xE9, ch)
+#define PUTCHAR(ch) (outb(0xE9, ch), io_wait(), outb(0x3E8, ch), io_wait())
 #define KPRINTNUMARG NULL
 
 //#define DISABLE_E9PRINTF

@@ -11,6 +11,7 @@ typedef struct dirent {
 
 typedef struct DIR {
   unsigned char private[256];
+  int dirfd;
 } DIR;
 
 DIR *opendir(const unsigned char *path);

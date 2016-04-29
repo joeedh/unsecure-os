@@ -8,7 +8,10 @@
 int ipc_broadcast(int id, char *data, int datasize);
 
 //send message to specific process
-int ipc_post(int dstpid, int id, char *data, int datasize);
+//returns message id
+int ipc_post(int dstpid, int type, char *data, int datasize);
+
+//returns message id
 int ipc_get(int *srcpid, int *type, void **data, int *datasize);
 int ipc_poll();
 

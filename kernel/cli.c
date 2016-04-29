@@ -40,7 +40,7 @@ int kcli_exec(char *name, int argc, char **argv, int (*main)(int argc, char **ar
   //return -1; //XXX
   
   Process *proc = spawn_process(name, argc, argv, main);
-  Process *self = process_get_current();
+  Process *self = process_get_current(0);
   
   process_set_stdin(proc, process_get_stdin(self));
   process_set_stdout(proc, process_get_stdout(self));
@@ -87,12 +87,15 @@ int kcli_main(int argc, char **argv) {
   e9printf("Started kcli_main\n");
   
   //kprintf(" stdout: %d\n\n", process_get_stdout());
-  Process *proc = process_get_current();
+  Process *proc = process_get_current(0);
   e9printf("proc: %p\n", proc);
   
-  //make libc wrapper of stdout
+  //make libc wrapper of stdout/stderr
   FILE _file = {proc->stdout};
+  //FILE _errfile = {proc->stderr};
+  
   FILE *stdout = &_file;
+  //FILE *stderr = &_errfile;
  
   debug_check_interrupts();
   
@@ -104,7 +107,11 @@ int kcli_main(int argc, char **argv) {
     int hadcode = 0;
     int _i=0;
     
-    while (_i++ < 100 && (printcode = fgetc(stdout)) > EOF) {
+    while (_i++ < 100) {
+      //printcode = fgetc(stderr);
+      //if (printcode == EOF)
+      printcode = fgetc(stdout);
+      
       if (printcode != EOF) {
         terminal_putchar(printcode);
         hadcode = 1;

@@ -10,6 +10,8 @@ mkdir -p install/bin
 mkdir -p install/lib
 mkdir -p install/tmp
 mkdir -p install/etc
+mkdir -p install/dev
+mkdir -p install/proc
 mkdir -p install/var/log
 
 cp kernel/sharedmem/shm.h install/usr/include/sys/mman.h

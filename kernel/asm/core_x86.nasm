@@ -1,6 +1,7 @@
 m4_changecom(`;', `')
 
 m4_include(`definitions.nasm')
+m4_include(`SudoBios.nasm')
 m4_include(`bootheader.nasm')
 m4_include(`data.nasm')
 m4_include(`real16.nasm')
@@ -90,6 +91,10 @@ m4_define(`exc_wrapper', `
   inc dword [_except_depth];
   
   mov eax, $1;
+  
+  push ebp;
+  push dword [ebp + DWSIZE];
+  push dword [ebp];
   push eax;
   
   ;clear exceptions
@@ -99,7 +104,9 @@ m4_define(`exc_wrapper', `
   mov ebx, .aftercall
   call nconcat(_exc_handler, $1);
   .aftercall:
+  
   pop eax;
+  add esp, DWSIZE*3;
 
   dec dword [_except_depth];
   jz .cleardebug;
@@ -421,6 +428,10 @@ raw_next_task:
 isr_0:
 ;  isr0_debug_stack()
   
+  ;increment tick counter
+  extern kernel_tick;
+  add dword [kernel_tick], 1
+  
   ctx_push()
 
   mov eax, dword [k_curtaskp];
@@ -694,25 +705,6 @@ get_eip:
   ret;
 
 m4_include(`core_fpu.nasm')
-
-global SBIOS_CallBios
-SBIOS_CallBios:
-  mov eax, 0x0 ;zero eax, in case bios ignores upper 16 bits
-  pusha;
-  
-  ;mov eax, [0x00002048 + 4];
-  
-  
-  ;enter 16 bit mode
-  call 0x08:0x2000
-  
-  ;int 11h;
-  
-  ;enter 32 bit mode again
-  call 0x08:0x2000
-  
-  popa;
-  ret
 
 global emergency_proc_exit
 emergency_proc_exit:

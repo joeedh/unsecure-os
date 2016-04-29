@@ -48,7 +48,7 @@ void *pmalloc(size_t size) {
   if (!size)
     return NULL;
 
-  Process *p = process_get_current();
+  Process *p = process_get_current(0);
   if (!p) {
     kerror(-1, "No active process!");
   }
@@ -78,7 +78,7 @@ int pfree(void *mem) {
     if (!ref)
       return -1;
    
-    Process *p = process_get_current();
+    Process *p = process_get_current(0);
     if (!p) {
       kerror(-1, "No active process!");
     }
@@ -163,7 +163,7 @@ int posix_spawn(int *pid_out, const char *path, char *file_actions, char *attrp,
   //int (*_start)(SysCallPtr *syscalls, char **argv, char **envv)
   //          = entry;
   
-  Process *p = process_get_current();
+  Process *p = process_get_current(0);
   if (!p) {
     kerror(-1, "no active process!");
   }
@@ -254,7 +254,7 @@ int system(const char *string) {
   memcpy(newargv, argv, argc*sizeof(void*));
   newargv[argc] = NULL;
   
-  Process *p = process_get_current();
+  Process *p = process_get_current(0);
   if (!p) {
     kerror(-1, "no active processes\n");
   }

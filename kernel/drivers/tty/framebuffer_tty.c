@@ -3,6 +3,8 @@
 #include "../framebuffer/framebuffer.h"
 #include "../../libc/libk.h"
 #include "../../libc/kmalloc.h"
+#include "../../task/task.h"
+#include "../../task/process.h"
 
 //this is a framebuffer tty, in kernel space
 //apparently this is how linux does it?
@@ -146,13 +148,58 @@ void tty_fb_render() {
   }
 }
 
-void tty_fb_flip() {
-  e9printf("tty framebuffer flip!\n");
+static volatile int tty_fb_doflip = 0;
+static volatile int thread_started = 0;
+static volatile int thread_spawned = 0;
+
+int tty_update_thread(int argc, char **argv) {
+  //int last_ms = 0;
+
+  thread_started = 1;
+  e9printf("framebuffer tty update thread running\n");
   
-  framebuffer_lock();
-  tty_fb_render();
-  framebuffer_blit(the_tty.backbuffer, 0, 0, the_tty.scrsizex, the_tty.scrsizey, RGBA, 0, 0, the_tty.scrsizex, the_tty.scrsizey);
-  framebuffer_unlock();
+  while (1) {
+    //int ms = kernel_tick / TICKS_PER_SECOND;
+    
+    if (tty_fb_doflip) {// && ms - last_ms > UPDATE_RATE_MS) {
+      e9printf("tty framebuffer flip!\n");
+      
+      tty_fb_doflip = 0;
+      
+      framebuffer_lock();
+      tty_fb_render();
+      framebuffer_blit(the_tty.backbuffer, 0, 0, the_tty.scrsizex, the_tty.scrsizey, RGBA, 0, 0, the_tty.scrsizex, the_tty.scrsizey);
+      framebuffer_unlock();
+      
+      //last_ms = ms;
+    }
+    
+    task_yield();
+  }
+  
+  return 0;
+}
+
+extern volatile int _process_initialized;
+
+void tty_fb_flip() {
+  if (thread_started) {
+    //e9printf("tty framebuffer update!\n");
+
+    tty_fb_doflip = 1;
+  } else {
+    if (_process_initialized) {
+      thread_spawned = 1;
+      e9printf("spawning framebuffer update thread (will update on-demand until it starts)\n");
+      Process *p = spawn_process("fbconsole", 0, NULL, tty_update_thread);
+      process_start(p);
+    }
+    
+    framebuffer_lock();
+    tty_fb_render();
+    framebuffer_blit(the_tty.backbuffer, 0, 0, the_tty.scrsizex, the_tty.scrsizey, RGBA, 0, 0, the_tty.scrsizex, the_tty.scrsizey);
+    framebuffer_unlock();
+  }
   
   return;
   

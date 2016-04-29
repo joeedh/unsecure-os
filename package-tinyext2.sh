@@ -1,6 +1,6 @@
 #!/bin/sh
 
-#dd if=/dev/zero of=tinyext2.fs bs=1024 count=450
+#dd if=/dev/zero of=tinyext2.fs bs=1024 count=550
 #mkfs.ext2 tinyext2.fs
 
 mount -t ext2 ./tinyext2.fs mnt

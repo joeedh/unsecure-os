@@ -8,6 +8,8 @@
 
 int have_sbios = 0;
 
+#define SUDO_ENTRY 0x2000
+
 void SBIOS_init() {
   int file = open("/lib/SudoBios.bin", O_RDONLY);
   
@@ -24,7 +26,7 @@ void SBIOS_init() {
   }
   
   unsigned int size = st.st_size;
-  unsigned char *buf = (unsigned  char*)0x2000;
+  unsigned char *buf = (unsigned  char*)SUDO_ENTRY;
   
   if (read(file, buf, size) <= 0) {
     kprintf("Error reading SBIOS\n");
@@ -37,5 +39,16 @@ void SBIOS_init() {
   have_sbios = 1;
 }
 
-//int SBIOS_CallBios(int func) {  
-//}
+int SBIwerOS_CallBios(int func) {
+    asm volatile (
+        "cli\n\t" //disable interrupts
+        "mov %0, %%eax\n\t"
+        "lcall $0x08,$0x2000\n\t" //enter real mode
+        ".code16\n\t"
+        "lcall $0x0,$0x2000\n\t" //exit real mode
+        ".code32\n\t"
+        "sti\n\t" //enable interrupts
+        :: "r"(func) : "eax"); //clobbers eax
+        
+    return -1;
+}

@@ -8,7 +8,7 @@
 #include "../task/process.h"
 #include "../task/process_management.h"
 #include "../task/task.h"
-
+#include "../task/rwlock.h"
 #include "../userinclude/wait.h"
 
 #include "../drivers/fs/fs_file.h"
@@ -25,6 +25,8 @@
 
 #define SYSCALL(call) call
 
+extern RWLock _procsys_lock;
+
 void *pmallocwrap(int size) {
   return pmalloc(size);
 }
@@ -32,6 +34,25 @@ void *pmallocwrap(int size) {
 void pfreewrap(void *mem) {
   pfree(mem);
 }
+
+/*
+int popenwrap(unsigned char *path, int mode) {
+  int ret = open(path, mode);
+  
+  if (ret < 0) {
+    return ret;
+  }
+  
+  krwlock_rlock(&_procsys_lock);
+  
+  Process *p = process_get_current(1);
+  
+  LinkNode *node = kmalloc(sizeof(LinkNode));
+  node->data = (void*)ret;
+  klist_append(&p->open_files, node);
+  
+  krwlock_unrlock(&_procsys_lock);
+}//*/
 
 /*Scratch syscall for testing various things*/
 int ktesterfunc(int arg) {
@@ -76,7 +97,8 @@ void *_syscalltable[] = {
   SYSCALL(lseek),
   SYSCALL(pread),
   SYSCALL(dmesg_size),
-  SYSCALL(stat)
+  SYSCALL(stat),
+  SYSCALL(clock)
 };
 
 int _totsyscalls = sizeof(_syscalltable) / sizeof(void*);

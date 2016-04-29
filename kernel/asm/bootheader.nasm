@@ -51,14 +51,20 @@ mb_entry:
   dd _start
   dd 0;
   
-;mb2_tag 5, 0, 12 ; framebuffer
-dw 5
-dw 0
-dd 20
-dd 800
-dd 600
-dd 32
-dd 0
+;mb2_tag 5, 0, 12 
+
+;m4_define(`VGA_TEXT_MODE')
+
+; framebuffer
+m4_ifdef(`VGA_TEXT_MODE', `
+  dw 5
+  dw 0
+  dd 20
+  dd 800
+  dd 600
+  dd 32
+  dd 0
+', `')
 
 ;mb_sentinel: align 4
   mb2_tag 0, 0, 0   ; null_terminated?

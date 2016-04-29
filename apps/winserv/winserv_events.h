@@ -34,9 +34,22 @@ enum {
   WM_ALIVE,
   WM_SERVER_CRASHED,
   WM_ACK, //acknowledged event, for events that don't reply
+  WM_NEWWINDOW,
+  WM_SHOWWINDOW,
+  WM_HIDEWINDOW,
+  WM_FLIPWINDOW,
+  WM_STARTDRAG,
+  WM_CLIPSET,
+  WM_GETFRAMEBUFFER,
+  WM_INT32,
+  WM_INTPTR,
   
   WM_WININFO, //get window info from 
 };
+ 
+typedef struct WinGetFramebufferReq {
+  WndHandle hwnd;
+} WinGetFramebufferReq;
 
 typedef struct WinInfoReply {
   WndHandle wnd;

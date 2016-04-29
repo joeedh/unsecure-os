@@ -2,6 +2,13 @@
 
 extern e9printf;
 
+%define lret db 0xcb
+
+%define GSEL_CODE   0x08
+%define GSEL_DATA   0x10
+%define GSEL_CODE16 0x28
+%define GSEL_DATA16 0x30
+
 %define _CRED  ('r' | (12 << 8) | (12<<12))
 %define _CGRE  ('g' | (9 << 8) | (9<<12))
 
@@ -29,7 +36,7 @@ extern e9printf;
 
 %define MAX_TASKS 32
 
-%define GDT_ENTRIES 5 ;number of gdt entries
+%define GDT_ENTRIES 32 ;number of gdt entries
 %define PROCESS_SIZE 472 ;size of Process struct
 %define TASK_SIZE 56 ;size of Task struct
 
@@ -91,6 +98,67 @@ extern terminal_set_idebug;
 
 
 
+global SBIOS_CallBios, enter_real, exit_real
+
+use16
+exit_real:
+  ret
+
+use32
+enter_real:
+  pushad
+  pushfd
+  
+  sgdt [esp]
+  sub esp, 16 ; 10 + 6 bytes of padding for alignnment
+  sidt [esp]
+  sub esp, 8  ; 6 + 2 bytes of padding for alignment
+  
+  ;call .prot32
+  ;.prot32:
+  pop ebx ;get 32-bit return address
+  
+  call GSEL_CODE16:.prot16
+use16
+  .prot16:
+  
+  ;pop off far ret
+  add esp, 8;
+  
+  jmp ebx
+use32
+
+SBIOS_CaleelBios:
+  call enter_real
+  use16
+  call exit_real
+  use32
+  ret
+
+SBIOS_CallBios:
+  push ebp
+  mov ebp, esp
+  
+  pusha
+  
+  mov eax, 0x0 ;zero eax, in case bios ignores upper 16 bits
+  ;mov eax, [0x00002048 + 4];
+  
+  
+  ;enter 16 bit mode
+  ;call 0x08:0x2000
+  
+  call 0x00002048
+  
+  ;int 11h;
+  
+  ;enter 32 bit mode again
+  ;call 0x08:0x2000
+  
+  popa
+  pop ebp
+  ret
+
 section .multiboot
 
 ;size of tag header is added automatically to size
@@ -144,14 +212,12 @@ mb_entry:
   dd _start
   dd 0;
   
-;mb2_tag 5, 0, 12 ; framebuffer
-dw 5
-dw 0
-dd 20
-dd 800
-dd 600
-dd 32
-dd 0
+;mb2_tag 5, 0, 12 
+
+;m4_define(`VGA_TEXT_MODE')
+
+; framebuffer
+
 
 ;mb_sentinel: align 4
   mb2_tag 0, 0, 0   ; null_terminated?
@@ -353,6 +419,10 @@ exr_0:
   inc dword [_except_depth];
   
   mov eax, 0;
+  
+  push ebp;
+  push dword [ebp + DWSIZE];
+  push dword [ebp];
   push eax;
   
   ;clear exceptions
@@ -362,7 +432,9 @@ exr_0:
   mov ebx, .aftercall
   call _exc_handler0;
   .aftercall:
+  
   pop eax;
+  add esp, DWSIZE*3;
 
   dec dword [_except_depth];
   jz .cleardebug;
@@ -420,6 +492,10 @@ exr_1:
   inc dword [_except_depth];
   
   mov eax, 1;
+  
+  push ebp;
+  push dword [ebp + DWSIZE];
+  push dword [ebp];
   push eax;
   
   ;clear exceptions
@@ -429,7 +505,9 @@ exr_1:
   mov ebx, .aftercall
   call _exc_handler1;
   .aftercall:
+  
   pop eax;
+  add esp, DWSIZE*3;
 
   dec dword [_except_depth];
   jz .cleardebug;
@@ -491,6 +569,10 @@ exr_2:
   inc dword [_except_depth];
   
   mov eax, 2;
+  
+  push ebp;
+  push dword [ebp + DWSIZE];
+  push dword [ebp];
   push eax;
   
   ;clear exceptions
@@ -500,7 +582,9 @@ exr_2:
   mov ebx, .aftercall
   call _exc_handler2;
   .aftercall:
+  
   pop eax;
+  add esp, DWSIZE*3;
 
   dec dword [_except_depth];
   jz .cleardebug;
@@ -558,6 +642,10 @@ exr_3:
   inc dword [_except_depth];
   
   mov eax, 3;
+  
+  push ebp;
+  push dword [ebp + DWSIZE];
+  push dword [ebp];
   push eax;
   
   ;clear exceptions
@@ -567,7 +655,9 @@ exr_3:
   mov ebx, .aftercall
   call _exc_handler3;
   .aftercall:
+  
   pop eax;
+  add esp, DWSIZE*3;
 
   dec dword [_except_depth];
   jz .cleardebug;
@@ -625,6 +715,10 @@ exr_4:
   inc dword [_except_depth];
   
   mov eax, 4;
+  
+  push ebp;
+  push dword [ebp + DWSIZE];
+  push dword [ebp];
   push eax;
   
   ;clear exceptions
@@ -634,7 +728,9 @@ exr_4:
   mov ebx, .aftercall
   call _exc_handler4;
   .aftercall:
+  
   pop eax;
+  add esp, DWSIZE*3;
 
   dec dword [_except_depth];
   jz .cleardebug;
@@ -692,6 +788,10 @@ exr_5:
   inc dword [_except_depth];
   
   mov eax, 5;
+  
+  push ebp;
+  push dword [ebp + DWSIZE];
+  push dword [ebp];
   push eax;
   
   ;clear exceptions
@@ -701,7 +801,9 @@ exr_5:
   mov ebx, .aftercall
   call _exc_handler5;
   .aftercall:
+  
   pop eax;
+  add esp, DWSIZE*3;
 
   dec dword [_except_depth];
   jz .cleardebug;
@@ -759,6 +861,10 @@ exr_6:
   inc dword [_except_depth];
   
   mov eax, 6;
+  
+  push ebp;
+  push dword [ebp + DWSIZE];
+  push dword [ebp];
   push eax;
   
   ;clear exceptions
@@ -768,7 +874,9 @@ exr_6:
   mov ebx, .aftercall
   call _exc_handler6;
   .aftercall:
+  
   pop eax;
+  add esp, DWSIZE*3;
 
   dec dword [_except_depth];
   jz .cleardebug;
@@ -826,6 +934,10 @@ exr_7:
   inc dword [_except_depth];
   
   mov eax, 7;
+  
+  push ebp;
+  push dword [ebp + DWSIZE];
+  push dword [ebp];
   push eax;
   
   ;clear exceptions
@@ -835,7 +947,9 @@ exr_7:
   mov ebx, .aftercall
   call _exc_handler7;
   .aftercall:
+  
   pop eax;
+  add esp, DWSIZE*3;
 
   dec dword [_except_depth];
   jz .cleardebug;
@@ -893,6 +1007,10 @@ exr_8:
   inc dword [_except_depth];
   
   mov eax, 8;
+  
+  push ebp;
+  push dword [ebp + DWSIZE];
+  push dword [ebp];
   push eax;
   
   ;clear exceptions
@@ -902,7 +1020,9 @@ exr_8:
   mov ebx, .aftercall
   call _exc_handler8;
   .aftercall:
+  
   pop eax;
+  add esp, DWSIZE*3;
 
   dec dword [_except_depth];
   jz .cleardebug;
@@ -960,6 +1080,10 @@ exr_9:
   inc dword [_except_depth];
   
   mov eax, 9;
+  
+  push ebp;
+  push dword [ebp + DWSIZE];
+  push dword [ebp];
   push eax;
   
   ;clear exceptions
@@ -969,7 +1093,9 @@ exr_9:
   mov ebx, .aftercall
   call _exc_handler9;
   .aftercall:
+  
   pop eax;
+  add esp, DWSIZE*3;
 
   dec dword [_except_depth];
   jz .cleardebug;
@@ -1027,6 +1153,10 @@ exr_10:
   inc dword [_except_depth];
   
   mov eax, 10;
+  
+  push ebp;
+  push dword [ebp + DWSIZE];
+  push dword [ebp];
   push eax;
   
   ;clear exceptions
@@ -1036,7 +1166,9 @@ exr_10:
   mov ebx, .aftercall
   call _exc_handler10;
   .aftercall:
+  
   pop eax;
+  add esp, DWSIZE*3;
 
   dec dword [_except_depth];
   jz .cleardebug;
@@ -1094,6 +1226,10 @@ exr_11:
   inc dword [_except_depth];
   
   mov eax, 11;
+  
+  push ebp;
+  push dword [ebp + DWSIZE];
+  push dword [ebp];
   push eax;
   
   ;clear exceptions
@@ -1103,7 +1239,9 @@ exr_11:
   mov ebx, .aftercall
   call _exc_handler11;
   .aftercall:
+  
   pop eax;
+  add esp, DWSIZE*3;
 
   dec dword [_except_depth];
   jz .cleardebug;
@@ -1161,6 +1299,10 @@ exr_12:
   inc dword [_except_depth];
   
   mov eax, 12;
+  
+  push ebp;
+  push dword [ebp + DWSIZE];
+  push dword [ebp];
   push eax;
   
   ;clear exceptions
@@ -1170,7 +1312,9 @@ exr_12:
   mov ebx, .aftercall
   call _exc_handler12;
   .aftercall:
+  
   pop eax;
+  add esp, DWSIZE*3;
 
   dec dword [_except_depth];
   jz .cleardebug;
@@ -1228,6 +1372,10 @@ exr_13:
   inc dword [_except_depth];
   
   mov eax, 13;
+  
+  push ebp;
+  push dword [ebp + DWSIZE];
+  push dword [ebp];
   push eax;
   
   ;clear exceptions
@@ -1237,7 +1385,9 @@ exr_13:
   mov ebx, .aftercall
   call _exc_handler13;
   .aftercall:
+  
   pop eax;
+  add esp, DWSIZE*3;
 
   dec dword [_except_depth];
   jz .cleardebug;
@@ -1295,6 +1445,10 @@ exr_14:
   inc dword [_except_depth];
   
   mov eax, 14;
+  
+  push ebp;
+  push dword [ebp + DWSIZE];
+  push dword [ebp];
   push eax;
   
   ;clear exceptions
@@ -1304,7 +1458,9 @@ exr_14:
   mov ebx, .aftercall
   call _exc_handler14;
   .aftercall:
+  
   pop eax;
+  add esp, DWSIZE*3;
 
   dec dword [_except_depth];
   jz .cleardebug;
@@ -1362,6 +1518,10 @@ exr_15:
   inc dword [_except_depth];
   
   mov eax, 15;
+  
+  push ebp;
+  push dword [ebp + DWSIZE];
+  push dword [ebp];
   push eax;
   
   ;clear exceptions
@@ -1371,7 +1531,9 @@ exr_15:
   mov ebx, .aftercall
   call _exc_handler15;
   .aftercall:
+  
   pop eax;
+  add esp, DWSIZE*3;
 
   dec dword [_except_depth];
   jz .cleardebug;
@@ -1429,6 +1591,10 @@ exr_16:
   inc dword [_except_depth];
   
   mov eax, 16;
+  
+  push ebp;
+  push dword [ebp + DWSIZE];
+  push dword [ebp];
   push eax;
   
   ;clear exceptions
@@ -1438,7 +1604,9 @@ exr_16:
   mov ebx, .aftercall
   call _exc_handler16;
   .aftercall:
+  
   pop eax;
+  add esp, DWSIZE*3;
 
   dec dword [_except_depth];
   jz .cleardebug;
@@ -1496,6 +1664,10 @@ exr_17:
   inc dword [_except_depth];
   
   mov eax, 17;
+  
+  push ebp;
+  push dword [ebp + DWSIZE];
+  push dword [ebp];
   push eax;
   
   ;clear exceptions
@@ -1505,7 +1677,9 @@ exr_17:
   mov ebx, .aftercall
   call _exc_handler17;
   .aftercall:
+  
   pop eax;
+  add esp, DWSIZE*3;
 
   dec dword [_except_depth];
   jz .cleardebug;
@@ -1563,6 +1737,10 @@ exr_18:
   inc dword [_except_depth];
   
   mov eax, 18;
+  
+  push ebp;
+  push dword [ebp + DWSIZE];
+  push dword [ebp];
   push eax;
   
   ;clear exceptions
@@ -1572,7 +1750,9 @@ exr_18:
   mov ebx, .aftercall
   call _exc_handler18;
   .aftercall:
+  
   pop eax;
+  add esp, DWSIZE*3;
 
   dec dword [_except_depth];
   jz .cleardebug;
@@ -2386,6 +2566,10 @@ raw_next_task:
 isr_0:
 ;  isr0_debug_stack()
   
+  ;increment tick counter
+  extern kernel_tick;
+  add dword [kernel_tick], 1
+  
   
   ;pushf;
   pushfd;
@@ -2784,25 +2968,6 @@ global __initFPU
 __initFPU:
   ret;
   
-
-global SBIOS_CallBios
-SBIOS_CallBios:
-  mov eax, 0x0 ;zero eax, in case bios ignores upper 16 bits
-  pusha;
-  
-  ;mov eax, [0x00002048 + 4];
-  
-  
-  ;enter 16 bit mode
-  call 0x08:0x2000
-  
-  ;int 11h;
-  
-  ;enter 32 bit mode again
-  call 0x08:0x2000
-  
-  popa;
-  ret
 
 global emergency_proc_exit
 emergency_proc_exit:

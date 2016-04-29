@@ -64,6 +64,12 @@ void setup_root() {
   
   rootdevice = device;
   rootfs = fs;
+  
+  //set up a /proc
+  extern FSInterface *init_procfs();
+  
+  FSInterface *procfs = init_procfs();
+  fs_vfs_add("/proc", procfs, rootdevice);
 }
 
 void test_rootfs() {
@@ -187,6 +193,8 @@ void startup_kernel(void *bootinfo1) {
   e9printf("loading SudoBios. . .\n");
   SBIOS_init();
   
+  process_finishinit();
+  
   e9printf("kernel startup complete.\n");
   kprintf("Kernel started\n Exception flag: %d\n", _cpu_exception_flag);
   
@@ -279,6 +287,9 @@ void kernel_main(void *bootinfo1) {
   
   kprintf("sizeof(TSS): %d\n", (int) sizeof(TSS));
   e9printf("sizeof(TSS): %d\n", (int) sizeof(TSS));
+  
+  extern int found_vbe3_pmid;
+  kprintf("found_vbe3_pmid: %d\n", found_vbe3_pmid);
   
   //test_kmalloc();
   //while (1) {

@@ -130,6 +130,23 @@ void gdt_tss_callback() {
   asm("hlt");
 }
 
+int gdt_alloc16(int base, int limit, int type) {
+  GDT gdt;
+  int i;
+  
+  for (i=0; i<GDT_SIZE; i++) {
+    GDTEntry *e = (GDTEntry*) (thegdt+i);
+    
+    if (!e->p) {
+      GDT_INIT(base, limit, type);
+      e->db = 0; //16 bit segment
+      return i;
+    }
+  }
+  
+  return -1;
+}
+
 void gdt_initialize() {
   GDT gdt;
   int i=0;
@@ -155,7 +172,12 @@ void gdt_initialize() {
   GDT_INIT(0, 0xffffffff, 0x9A);// Selector 0x08 will be our code
   GDT_INIT(0, 0xffffffff, 0x92);// Selector 0x10 will be our data
   GDT_INIT(tssa, sizeof(TSS), 0x89);// You can use LTR(0x18)
-  GDT_INIT(0, 0xffffffff, 0x9A);
+  GDT_INIT(0, 0xffffffff, 0x9A); //0x20
+  
+  //16-bit code and data segments
+  GDT_INIT(0, 0xffffffff, 0x9A);// Selector 0x28 will be our code
+  GDT_INIT(0, 0xffffffff, 0x92);// Selector 0x30 will be our data
+  
   GDTEntry *e;
   
   //tss

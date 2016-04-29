@@ -1,6 +1,20 @@
 #ifndef _KPROCESS_H
 #define _KPROCESS_H
 
+#if 0
+  #define RLOCK_PROCSYS e9printf("rlock: %s:%d: procsys\n", __FILE__, __LINE__), krwlock_rlock(&_procsys_lock);
+  #define UNRLOCK_PROCSYS e9printf("unrlock: %s:%d: procsys\n", __FILE__, __LINE__), krwlock_unrlock(&_procsys_lock);
+
+  #define LOCK_PROCSYS e9printf("wlock: %s:%d: procsys\n", __FILE__, __LINE__), krwlock_lock(&_procsys_lock);
+  #define UNLOCK_PROCSYS e9printf("unwlock: %s:%d: procsys\n", __FILE__, __LINE__), krwlock_unlock(&_procsys_lock);
+#else
+  #define RLOCK_PROCSYS krwlock_rlock(&_procsys_lock);
+  #define UNRLOCK_PROCSYS krwlock_unrlock(&_procsys_lock);
+
+  #define LOCK_PROCSYS krwlock_lock(&_procsys_lock);
+  #define UNLOCK_PROCSYS krwlock_unlock(&_procsys_lock);
+#endif
+
 #include "../timer.h"
 #include "task.h"
 #include "../io.h"
@@ -16,6 +30,8 @@ enum {
   PROC_ZOMBIE = 2
 };
 
+typedef void (*ProcFinishFunc)(int retval, int tid, int pid);
+
 //keep in sync with PROCESS_SIZE in asm/definitions.nasm!
 typedef struct Process {
   struct Process *next, *prev;
@@ -26,7 +42,7 @@ typedef struct Process {
   unsigned char working_path[256];
   
   int (*entryfunc)(int argc, char **argv);
-  void (*finishfunc)(int retval, int tid, int pid);
+  ProcFinishFunc finishfunc;
   
   int argc;
   char **argv, **environ;
@@ -55,11 +71,12 @@ Process *process_from_pid(intptr_t pid, int skiplocks);
 
 int emergency_proc_exit();
 
-Process *process_get_current();
+Process *process_get_current(int skiplocks);
 int process_get_stdin(Process *p);
 int process_get_stdout(Process *p);
 int process_get_stderr(Process *p);
-  
+void process_finishinit();
+
 Process *spawn_process(const char *name, int argc, char **argv, int (*main)(int argc, char **argv));
 int process_start(Process *process);
 

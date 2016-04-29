@@ -201,15 +201,14 @@ static inline void _klock_lock(Lock *lock DEBUG_ARGS) {
 restart:
   do {
     //k_curtaskp->sleep = 1;
+    //task_yield();
     //asm("PAUSE");
   } while (lock->owner != 0);
   
-  lock->owner = tid;
-  //volatile unsigned int state = _lock_safe_entry();
+  volatile unsigned int state = _lock_safe_entry();
   
-  if (lock->owner != tid) {
-    //_lock_safe_exit(state);
-    task_yield();
+  if (lock->owner != 0) {
+    _lock_safe_exit(state);
     goto restart;
   }
   
@@ -221,7 +220,7 @@ restart:
   lock->owner = tid;
   lock->state = 1;
   
-  //_lock_safe_exit(state);
+  _lock_safe_exit(state);
 }
 
 static inline void _klock_unlock(Lock *lock DEBUG_ARGS) {

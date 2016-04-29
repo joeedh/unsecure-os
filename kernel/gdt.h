@@ -3,7 +3,8 @@
 
 #include <stdint.h>
 
-#define GDT_SIZE 5
+//keep up to date with GDT_ENTRIES in definitions.nasm!
+#define GDT_SIZE 32
 
 enum {
   GDT_NULL,
@@ -28,6 +29,13 @@ typedef struct GDTEntry {
   unsigned int g:1;
   unsigned int base3:8;
 }  __attribute__((packed)) GDTEntry;
+
+int gdt_alloc16(int base, int limit, int type);
+
+#define GSEL_CODE   0x08
+#define GSEL_DATA   0x10
+#define GSEL_CODE16 0x28
+#define GSEL_DATA16 0x30
 
 typedef unsigned int GDTPtrInt;
 

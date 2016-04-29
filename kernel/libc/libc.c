@@ -104,6 +104,7 @@ ESYS_I3I(lseek, SYS_LSEEK);
 ESYS_I4I(pread, SYS_PREAD);
 SYS_I0V(dmesg_size, SYS_DMESG_SIZE);
 ESYS_I2I(stat, SYS_STAT); //XXX 64-bit type error!
+SYS_I0V(clock, SYS_CLOCK);
 
 int e9printf(char *fmt, ...) {
   va_list va;

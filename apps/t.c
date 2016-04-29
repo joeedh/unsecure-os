@@ -8,8 +8,9 @@
 #include <string.h>
 #include <stdint.h>
 
-#include "sys/stat.h"
+#include <time.h>
 
+#include "sys/stat.h"
 #include "spawn.h"
 
 extern int ktesterfunc(int arg);
@@ -44,11 +45,18 @@ int test_console() {
 int main(int argc, char **argv) {
   int ret;
   
+  if (argc > 1) {
+    printf("%s\n", argv[1]);
+    printf("%d\n", atoi(argv[1]));
+  } else {
+    printf("%d\n", clock());
+  }
+  
   //printf("yay, test!\n");
   //ret = ktesterfunc(11);
   //printf("ktesterfunc ret: %d\n", ret);
   
-  test_console();
+  //test_console();
   
   return 0;
 }

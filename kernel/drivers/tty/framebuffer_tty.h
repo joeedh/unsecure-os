@@ -3,6 +3,8 @@
 
 #include "tty.h"
 
+#define UPDATE_RATE_MS  50
+
 typedef struct FbTTY {
   int sizex, sizey;
   int cellx, celly;

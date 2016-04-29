@@ -17,9 +17,9 @@ int main(int argc, char **argv) {
   char path[256];
   int i;
   
-  e9printf("started ls proc\n");
+  //e9printf("started ls proc\n");
   
-  e9printf("ls-argc: %d, argv: %x\n", argc, argv);
+  //e9printf("ls-argc: %d, argv: %x\n", argc, argv);
   fprintf(stdout, "argc: %d, argv: %x\n", argc, argv);
   //*
   
@@ -36,7 +36,7 @@ int main(int argc, char **argv) {
   fprintf(stdout, "\n");
   
   dir = opendir(path);
-  e9printf("dir: %x\n", dir);
+  //e9printf("dir: %x\n", dir);
   
   struct stat st;
   
@@ -71,7 +71,7 @@ int main(int argc, char **argv) {
   closedir(dir);
   //*/
   
-  e9printf("finished ls proc, -1\n");
+  //e9printf("finished ls proc, -1\n");
   
   return -2;
 }

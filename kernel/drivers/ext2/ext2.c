@@ -12,6 +12,8 @@
 #include "../../libc/list.h"
 
 #define EXT2_DEBUG  0
+//#define extdebug(...) e9printf(__VA_ARGS__)
+#define extdebug(...)
 
 //INODES START AT 1!
 
@@ -238,6 +240,16 @@ typedef struct DirEntry {
 #define UNPACK_FILEFD_ID(fd) ((fd)>>16)
 #define UNPACK_FILEFD_IDX(fd) ((fd) & ((1<<16)-1))
 
+static uint64_t inode_get_size(INode *inode) {
+  uint64_t size; 
+  uint32_t *ptr = (uint32_t*) &size;
+  
+  //XXX should check for endianness here
+  ptr[0] = inode->size_lower32;
+  ptr[1] = inode->size_upper32;
+
+  return size;
+}
 
 int ext2_path_to_inode(void *vself, BlockDeviceIF *device, const char *utf8path, int utf8path_size);
 
@@ -338,7 +350,7 @@ static size_t read_indirect(BlockDeviceIF *device, ext2fs *efs, int fileoff, int
   
   size_t blocksize = efs->blocksize, totpointer = blocksize / 4;
   
-  e9printf("indirect read! %d %d %d\n", fileoff, blockoff, depth);
+  extdebug("indirect read! %d %d %d\n", fileoff, blockoff, depth);
   
   for (int i=depth; i > 0; i--) {
     d = i-1;
@@ -355,7 +367,7 @@ static size_t read_indirect(BlockDeviceIF *device, ext2fs *efs, int fileoff, int
     if (!device->read(device, fileoff + block*4, 4, &block2)) {
       e9printf("\n  read error!\n");
     }
-    e9printf("  read: %d %d %d\n", block, fileoff+block*4, block2);
+    extdebug("  read: %d %d %d\n", block, fileoff+block*4, block2);
     
     fileoff = block2*blocksize;
   }
@@ -422,6 +434,14 @@ static size_t read_inode_contents(BlockDeviceIF *device, ext2fs *efs,
   
   size_t i1 = fileoff / blocksize;
   size_t i2 = (fileoff+size) / blocksize;
+  
+  //XXX
+  if (fileoff == (int)inode->size_lower32) {
+    return 0;
+  } else if (fileoff > (int)inode->size_lower32) {
+    _fs_error(efs, -2, "EACCESS");
+    return -2;
+  }
   
   //kprintf("  i1: %d, i2: %d\n", i1, i2);
   
@@ -872,8 +892,8 @@ static int ext3_fstat(void *self, BlockDeviceIF *device, int filefd, struct stat
     return -1;
   }
   
-  e9printf("inode.size_lower32: %d\n", inode.size_lower32);
-  e9printf("inode.size_lower32: %d %d %d\n", inode.type, inode.userid, inode.groupid);
+  extdebug("inode.size_lower32: %d\n", inode.size_lower32);
+  extdebug("inode.size_lower32: %d %d %d\n", inode.type, inode.userid, inode.groupid);
   
   int m = 0;
   
@@ -902,8 +922,8 @@ static int ext3_stat(void *self, BlockDeviceIF *device, int inode_nr, struct sta
     return -1;
   }
   
-  e9printf("inode.size_lower32: %d\n", inode.size_lower32);
-  e9printf("inode.size_lower32: %d %d %d\n", inode.type, inode.userid, inode.groupid);
+  extdebug("inode.size_lower32: %d\n", inode.size_lower32);
+  extdebug("inode.size_lower32: %d %d %d\n", inode.type, inode.userid, inode.groupid);
   
   int m = 0;
   

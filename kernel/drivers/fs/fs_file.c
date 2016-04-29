@@ -19,6 +19,7 @@
 #include "../../task/lock.h"
 #include "../../timer.h"
 #include "../../libc/path.h"
+#include "fs_vfstable.h"
 
 #include "dirent.h"
 
@@ -28,6 +29,57 @@ extern BlockDeviceIF *rootdevice;
 static List open_files;
 
 static int prepare_path(const unsigned char *pathin, unsigned char *pathout, int outsize);
+
+int fs_vfs_add(char *prefix, FSInterface *fs, BlockDeviceIF *device) {
+  vfs_table = krealloc(vfs_table, sizeof(VFSEntry)*(vfs_table_size+1));
+  
+  strcpy(vfs_table[vfs_table_size].prefix, prefix);
+  vfs_table[vfs_table_size].fs = fs;
+  vfs_table[vfs_table_size].device = device;
+  vfs_table[vfs_table_size].flag = VFS_ENABLED;
+  
+  vfs_table_size++;
+  
+  return 0;
+}
+
+int fs_vfs_get(const char *path, FSInterface **fs, BlockDeviceIF **device) {
+  *fs = rootfs;
+  *device = rootdevice;
+  
+  int max_match = 0, max=-1;
+  int len = strlen(path);
+  
+  for (int i=0; i<vfs_table_size; i++) {
+    int len2 = strlen(vfs_table[i].prefix);
+    int j=0;
+    
+    if (len2 > len)
+      continue;
+    if (!(vfs_table[i].flag & VFS_ENABLED))
+      continue;
+    
+    for (j=0; j<len2; j++) {
+      if (path[j] != vfs_table[i].prefix[j]) {
+        break;
+      }
+    }
+    
+    if (j == len2 && j > max) {
+      max_match = i;
+      max = j;
+    }
+  }
+  
+  if (max != -1) {
+    e9printf("Found a virtual file system device: %s\n", vfs_table[max_match].prefix);
+    
+    *fs = vfs_table[max_match].fs;
+    *device = vfs_table[max_match].device;
+  }
+  
+  return 0;
+}
 
 int bad_fsdev(FSInterface *fs, BlockDeviceIF *device) {
   return !fs || fs->magic != FSINTERFACE_MAGIC || (device && device->magic != BLOCKDEVICE_MAGIC);
@@ -436,7 +488,7 @@ static int prepare_path(const unsigned char *pathin, unsigned char *pathout, int
     return 0;
   }
   
-  Process *p = process_get_current();
+  Process *p = process_get_current(0);
   
   if (!p) {
     strncpy(pathout, pathin, outsize);
@@ -482,6 +534,12 @@ int open(const unsigned char *path, int modeflags) {
     return -1;
   }
   
+  LinkNode *node = kmalloc(sizeof(LinkNode));
+  node->data = file;
+  
+  Process *p = process_get_current(0);
+  klist_append(&p->open_files, node);
+  
   return (int)file;
 }
 
@@ -496,6 +554,17 @@ int close(int fd) {
   _lock_file(file);
   file->fs->close(file->fs, file->device, file->internalfd);
   _unlock_file(file);
+
+  Process *p = process_get_current(0);
+  LinkNode *node;
+  
+  for (node=p->open_files.first; node; node=node->next) {
+    if (node->data == file) {
+      klist_remove(&p->open_files, node);
+      kfree(node);
+      break;
+    }
+  }
   
   return 0;
 }
@@ -536,6 +605,12 @@ DIR *opendir(const unsigned char *path) {
   klock_unlock(&rootfs->lock);
   klock_unlock(&rootdevice->lock);
   
+  FSFile *dirfile = kmalloc(sizeof(FSFile));
+  memset(dirfile, 0, sizeof(*dirfile));
+  dirfile->fs = rootfs;
+  dirfile->device = rootdevice;
+  ret->dirfd = (int)dirfile;
+  
   return ret;
 }
 
@@ -567,6 +642,12 @@ DIR *opendir_inode(int inode) {
   klock_unlock(&device->lock);
   klock_unlock(&fs->lock);
   
+  FSFile *dirfile = kmalloc(sizeof(FSFile));
+  memset(dirfile, 0, sizeof(*dirfile));
+  dirfile->fs = rootfs;
+  dirfile->device = rootdevice;
+  dir2->dirfd = (int)dirfile;
+  
   return dir2;
 }
 
@@ -575,6 +656,10 @@ int closedir(DIR *dir) {
     kprintf("File system driver corruption!\n");
     return -1;
   }
+  
+  FSFile *dirfile = (FSFile*) dir->dirfd;
+  kfree(dirfile);
+  dir->dirfd = 0;
   
   klock_lock(&rootfs->lock);
   klock_lock(&rootdevice->lock);
@@ -632,7 +717,7 @@ void rewinddir(DIR *dir) {
 }
 
 int chdir(char *path) {
-  Process *p = process_get_current();
+  Process *p = process_get_current(0);
   
   if (!p) 
     return -1;
@@ -655,7 +740,7 @@ int chdir(char *path) {
 }
 
 char *getcwd(char *buf, size_t size) {
-  Process *p = process_get_current();
+  Process *p = process_get_current(0);
   
   if (!p) 
     return NULL;

@@ -1,5 +1,12 @@
 extern e9printf;
 
+%define lret db 0xcb
+
+%define GSEL_CODE   0x08
+%define GSEL_DATA   0x10
+%define GSEL_CODE16 0x28
+%define GSEL_DATA16 0x30
+
 %define _CRED  ('r' | (12 << 8) | (12<<12))
 %define _CGRE  ('g' | (9 << 8) | (9<<12))
 
@@ -33,7 +40,7 @@ m4_define(nconcat, `$1$2')
 
 %define MAX_TASKS 32
 
-%define GDT_ENTRIES 5 ;number of gdt entries
+%define GDT_ENTRIES 32 ;number of gdt entries
 %define PROCESS_SIZE 472 ;size of Process struct
 %define TASK_SIZE 56 ;size of Task struct
 

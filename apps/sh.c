@@ -59,7 +59,7 @@ int commandexec_export(ShellState *state, int argc, char **argv) {
   
   const char *val = argv[1]+i+n+1;
   
-  e9printf("%s:%s\n", buf, val);
+  //e9printf("%s:%s\n", buf, val);
   
   setenv(buf, val, 1);
   
@@ -72,7 +72,7 @@ error:
 
 int commandexec_changedir(ShellState *state, int argc, char **argv) {
   if (argc < 2) {
-    e9printf("failed to change dir: missing argument\n");
+    printf("failed to change dir: missing argument\n");
     return -1;
   }
   
@@ -88,7 +88,7 @@ int commandexec_changedir(ShellState *state, int argc, char **argv) {
   char *dir = strtrim(_dir);
   int dlen = strlen(dir)-1;
 
-  e9printf("dir argument: %d'%s'\n", strlen(dir), dir);
+  //e9printf("dir argument: %d'%s'\n", strlen(dir), dir);
 
   if (dir[dlen-1] == '/') {
     dir[dlen-1] = 0;
@@ -182,12 +182,12 @@ int whereis(char *name, char *outpath, int outsize) {
       c += n;
       
       //bad directory
-      e9printf("bad dir in path: '%s'\n", buf);
+      printf("bad dir in path: '%s'\n", buf);
       continue;
     }
     
     while ((entry = readdir(dir))) {
-      e9printf("  entry: '%s' '%s'\n", entry->d_name, name);
+      //e9printf("  entry: '%s' '%s'\n", entry->d_name, name);
       
       if (!strcmp(entry->d_name, name)) {
         strncpy(outpath, buf, outsize);
@@ -198,7 +198,7 @@ int whereis(char *name, char *outpath, int outsize) {
         
         strncat(outpath, name, outsize);
         
-        e9printf("found: '%s'\n", outpath);
+        //e9printf("found: '%s'\n", outpath);
         
         return 0;
       }
@@ -292,7 +292,7 @@ static char *shlex2_putenv(char *c, shlexstate *state) {
   } while (valid);
   
   env = getenv(state->scratch);
-  e9printf("env: %s:'%s'\n", state->scratch, env);
+  //e9printf("env: %s:'%s'\n", state->scratch, env);
   
   if (env) {
     int oldstate = state->state;
@@ -396,7 +396,7 @@ int commandexec_spawn(ShellState *state, int argc, char **argv) {
 }
 
 int commandexec(ShellState *state, int argc, char **argv) {
-  e9printf(":: %c%c%x\n", argv[0][0], argv[0][1], argv[0][2]);
+  //e9printf(":: %c%c%x\n", argv[0][0], argv[0][1], argv[0][2]);
   
   if (argc == 0)
     return -1;
@@ -464,10 +464,10 @@ int interactive(ShellState *state, int argc, char **argv) {
         state->cursorx = 0;
         state->commandlen = 0;
         
-        e9printf("argc: %d, argv: %x\n", argc2, argv2);
-        for (int i=0; i<argc2; i++) {
-          e9printf("    '%s'\n", argv2[i]);
-        }
+        //e9printf("argc: %d, argv: %x\n", argc2, argv2);
+        //for (int i=0; i<argc2; i++) {
+          //e9printf("    '%s'\n", argv2[i]);
+        //}
         
         if (argc2 > 0) {
           commandexec(state, argc2, argv2);

@@ -135,14 +135,15 @@ uint16_t PIC_get_isr(void)
 }
 
 static inline int e9printinfo() {
-  stacktrace(e9printf);
+  stacktrace(kprintf);
   
-  e9printf("\n============================\n");
+  kprintf("\n============================\n");
   
-  e9printf("eax: %x, ecx: %x, esp: %x\n", read_eax(), read_ecx(), read_esp());
-  e9printf("ebp: %x, ebx: %x, eflags: %x\n", read_ebp(), read_ebx(), read_eflags());
-  e9printf("\ninstruction pointer: %x\n", get_eip);
-  e9printf("k_curtaskp: %x\n", k_curtaskp);
+  kprintf("eax: %x, ecx: %x, esp: %x\n", read_eax(), read_ecx(), read_esp());
+  kprintf("ebp: %x, ebx: %x, eflags: %x\n", read_ebp(), read_ebx(), read_eflags());
+  kprintf("\ninstruction pointer: %x\n", get_eip());
+  
+  kprintf("k_curtaskp: %x\n", k_curtaskp);
   
   return 0;
 }
@@ -151,35 +152,56 @@ volatile int last_irq = 0;
 
 #define EXC_HANDLE(n) \
 extern void exr_##n();\
-void _exc_handler##n(unsigned int flag) {\
+void _exc_handler##n(unsigned int flag, uintptr_t eip, uintptr_t code, uintptr_t *ebp) {\
   _cpu_exception_flag |= 1<<n;\
+  kprintf("====Got exception " #n "=====\n");\
+  e9printf("====Got exception " #n "=====\n");\
+\
+  kprintf("eip: %x, code: %x | %x %x %x\n", eip, code, ebp[0], ebp[1], ebp[2]);\
+  e9printf("eip: %x, code: %x | %x %x %x\n", eip, code, ebp[0], ebp[1], ebp[2]);\
 }
 
 #define KILLPROC_EXCEPTION(n) \
 extern void exr_##n();\
-void _exc_handler##n(unsigned int flag) {\
+void _exc_handler##n(unsigned int flag, uintptr_t eip, uintptr_t code, uintptr_t *ebp) {\
   _cpu_exception_flag |= flag;\
+  kprintf("====Got exception " #n "=====\n");\
   e9printf("====Got exception " #n "=====\n");\
+\
+  kprintf("eip: %x, code: %x | %x %x %x\n", eip, code, ebp[0], ebp[1], ebp[2]);\
+  e9printf("eip: %x, code: %x | %x %x %x\n", eip, code, ebp[0], ebp[1], ebp[2]);\
+\
+  kerror(n, "Got exception " #n);\
   e9printinfo();\
   emergency_proc_exit();\
 }
 
 #define DEATH_EXCEPTION(n) \
 extern void exr_##n();\
-void _exc_handler##n(unsigned int flag) {\
+void _exc_handler##n(unsigned int flag, uintptr_t eip, uintptr_t code, uintptr_t *ebp) {\
   _cpu_exception_flag |= flag;\
+  kprintf("====Got exception " #n "=====\n");\
   e9printf("====Got exception " #n "=====\n");\
-  e9printinfo();\
+\
+  kprintf("eip: %x, code: %x | %x %x %x\n", eip, code, ebp[0], ebp[1], ebp[2]);\
+  e9printf("eip: %x, code: %x | %x %x %x\n", eip, code, ebp[0], ebp[1], ebp[2]);\
+\
   kerror(n, "Got exception " #n);\
+  e9printinfo();\
 }
 
 #define WARN_EXCEPTION(n) \
 extern void exr_##n();\
-void _exc_handler##n(unsigned int flag) {\
+void _exc_handler##n(unsigned int flag, uintptr_t eip, uintptr_t code, uintptr_t *ebp) {\
   _cpu_exception_flag |= flag;\
+  kprintf("====Got exception " #n "=====\n");\
   e9printf("====Got exception " #n "=====\n");\
+\
+  kprintf("eip: %x, code: %x | %x %x %x\n", eip, code, ebp[0], ebp[1], ebp[2]);\
+  e9printf("eip: %x, code: %x | %x %x %x\n", eip, code, ebp[0], ebp[1], ebp[2]);\
+\
+  kerror(n, "Got exception " #n);\
   e9printinfo();\
-  e9printf("====Got exception " #n "=====\n");\
 }
 
 DEATH_EXCEPTION(0); //divide by zero         #DE

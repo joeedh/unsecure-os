@@ -66,7 +66,8 @@ enum {
   SYS_LSEEK,
   SYS_PREAD,
   SYS_DMESG_SIZE,
-  SYS_STAT
+  SYS_STAT,
+  SYS_CLOCK
 };
 
 #endif /* _SYSCALLS_H */

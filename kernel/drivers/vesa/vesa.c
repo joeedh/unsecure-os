@@ -1,6 +1,89 @@
+#include <stddef.h>
+#include <stdint.h>
+
 #include "vesa.h"
 #include "../../libc/libk.h"
+#include "../../libc/string.h"
 #include "../../libc/kmalloc.h"
+#include "../../gdt.h"
+
+int found_vbe3_pmid = 0;
+extern short vbe3_bios_sel;
+extern int vbe3_bios_image;
+
+//*
+
+struct PMInfoBlock {
+  char sig[4];
+  intptr_t EntryPoint;
+  intptr_t PMInitialize;
+  intptr_t BIOSDataSel;
+  intptr_t A0DataSel;
+  intptr_t B0DataSel;
+  intptr_t B8DataSel;
+  intptr_t CodeSegSel; //rw
+  char InProtectedMode;
+  char Checksum;
+};
+
+typedef struct VideoBios {
+  struct PMInfoBlock *info;
+  char *stack;
+  int bios_code_seg;
+  
+  char image[64*1024];
+  char _stack[1024*64];
+} VideoBios;
+
+//*/
+
+void test_vbe3() {
+  //find video bios
+  struct PMInfoBlock *pminfo = NULL;
+  char *bios = NULL;
+   
+  static uintptr_t tries[2] = {
+    0xC0000,
+    0xC000
+  };
+  
+  for (int si=0; si<2; si++) {
+    bios = (char*) tries[si];
+    
+    for (int i=0; i<33553342; i++) {
+      if (bios[i] == 'P' && bios[i+1] == 'M' && bios[i+2] == 'I' && bios[i+3] == 'D') {
+        e9printf("\n\nFound video bios!\n\n\n");
+        found_vbe3_pmid = si+1;
+        
+        pminfo = (struct PMInfoBlock*)(bios+i);
+        break;
+      }
+    }
+  }
+  
+  //*
+  extern int vbe3_ctrlr_info(VideoBios *vbios, unsigned int mode, void *ptr);
+  
+  if (pminfo) {
+    e9printf("setting up vbe3 protected mode. . .\n");
+    
+    //hrm, how to call, how to call. . .
+    VideoBios *data = kmalloc(sizeof(VideoBios));
+    memcpy(data->image, bios, sizeof(data->image)); //might copy a bit extra, but oh well, better to be safe
+    
+    vbe3_bios_image = (int)data->image;
+    
+    pminfo = (struct PMInfoBlock*) (((char*)pminfo) - bios + data->image);
+    pminfo->EntryPoint += (intptr_t) data->image;
+    pminfo->PMInitialize += (intptr_t) data->image;
+    
+    pminfo->BIOSDataSel = gdt_alloc16((int)data->image, sizeof(data->image), 0x92);
+    data->bios_code_seg = gdt_alloc16((int)data->image, sizeof(data->image), 0x9A);
+    
+    data->info = pminfo;
+    data->stack = data->_stack + sizeof(data->_stack) - 4; //stack grows downwards. . .
+  }//*/
+}
 
 uintptr_t vesa_origin, vesa_width, vesa_height, vesa_bpp, vesa_type;
 
@@ -76,6 +159,8 @@ static VesaFramebuffer vesa;
       
 Framebuffer *vesa_init(void *bootinfo) {
   e9printf("vesa init\n");
+  
+  test_vbe3();
   
   memset(&vesa, 0, sizeof(vesa));
   krwlock_init(&vesa.lock);

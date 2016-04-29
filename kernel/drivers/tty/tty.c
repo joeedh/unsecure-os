@@ -1,4 +1,4 @@
-//#define VGA_TEXT_MODE
+#define VGA_TEXT_MODE
 
 #include <stdint.h>
 #include <stddef.h>
@@ -10,12 +10,10 @@
 #include "../../libc/kmalloc.h"
 
 #ifdef VGA_TEXT_MODE
-#define SCREEN_TEXT_OUT 0xB8000
+  #define SCREEN_TEXT_OUT 0xB8000
 #else
-
-#include "framebuffer_tty.h"
-#define SCREEN_TEXT_OUT tty_fb_get_textarray()
-
+  #include "framebuffer_tty.h"
+  #define SCREEN_TEXT_OUT tty_fb_get_textarray()
 #endif
 
 typedef struct TTYBuffer {
@@ -664,7 +662,7 @@ int terminal_reset_hcursor() {
   int x = tty.cursorx;
   int y = tty.cursory - (tty.scrolly + tty.scrolly_off);
   
-  e9printf("xy: %d %d\n", x, y);
+  //e9printf("xy: %d %d\n", x, y);
   
   if (y >= 0 && y < VGA_HEIGHT) {
     terminal_set_hcursor(x, y);

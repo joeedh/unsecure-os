@@ -8,8 +8,11 @@
 #include <string.h>
 
 typedef struct WndProcess {
+  struct WndProcess *next, *prev;
+  
   int pid, permissions;
   List windows;
+  
   int pipe[2];
 } WndProcess;
 
