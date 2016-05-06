@@ -49,7 +49,7 @@ static int shmfile_tell(void *vself, BlockDeviceIF *device, int file) {
   return self->fptr;
 }
 
-static int shmfile_eof(void *vself, BlockDeviceIF *device, int file) {
+static int shmfile_eof(void *vself, BlockDeviceIF *device, int file, size_t off) {
   SharedMemFS *self = vself;
   
   return self->fptr >= self->size ? -1 : 0;

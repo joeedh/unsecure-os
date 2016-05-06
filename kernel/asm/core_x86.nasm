@@ -566,6 +566,36 @@ __initdTask3: align 8
   dosti;
   ret;
 
+global _thread_ctx_push
+_thread_ctx_push:
+  push ebp;
+  push ebx;
+  push ecx;
+  
+  mov ebp, esp;
+  
+  mov eax, [esp + DWSIZE]; stack pointer
+  
+  ;save old stack for later
+  mov ecx, esp;
+  
+  ;set new stack pointer
+  mov esp, eax;
+  
+  ;push context, minus far return pointer+seg
+  ctx_push();
+  
+  ;set return value for final new stack in eax
+  mov eax, esp;
+  
+  ;restore original stack pointer
+  mov esp, ecx;
+  
+  pop ecx;
+  pop ebx;
+  pop ebp;
+  ret;
+  
 __initTask3: align 8
   docli;
   ;mov ebp, esp
@@ -707,15 +737,15 @@ get_eip:
 m4_include(`core_fpu.nasm')
 
 global emergency_proc_exit
-emergency_proc_exit:
+_old_emergency_proc_exit:
   cli
   
   ;set up emergency stack
   mov [emergency_proc_exit_stack], esp
   mov esp, [emergency_proc_exit_stack + 4]
   
-  extern _emergency_proc_exit
-  call _emergency_proc_exit
+  ;extern _emergency_proc_exit
+  ;call _emergency_proc_exit
   
   pop esp
   

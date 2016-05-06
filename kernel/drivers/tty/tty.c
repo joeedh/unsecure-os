@@ -7,7 +7,10 @@
 #define VGA_HEIGHT 25
 
 #include "tty.h"
+#include "termios.h"
 #include "../../libc/kmalloc.h"
+#include "../fs/fs_file.h"
+#include "../keyboard/keyboard.h"
 
 #ifdef VGA_TEXT_MODE
   #define SCREEN_TEXT_OUT 0xB8000
@@ -24,11 +27,19 @@ typedef struct TTYBuffer {
   int cursorx, cursory;
   int escape_mode, escape_state[15], escape_statelen;
 
-  int lastwritten;
+  int lastwritten, bufmode;
   int fg, bg, lastfg, intensity;
 
   void (*flip)(struct TTYBuffer *self);
   struct TTYBuffer *alt;
+  
+  int userspace_stdin;
+  int userspace_stdout;
+  
+  char userspace_stdin_buf[1024];
+  int userspace_stdin_cur;
+  
+  termios settings;
 } TTYBuffer;
 
 static TTYBuffer tty;
@@ -43,9 +54,67 @@ uint16_t terminal_buffer[VGA_HEIGHT*VGA_WIDTH];
 #include "../../libc/libk.h"
 #include "../../libc/string.h"
 #include "../../task/lock.h"
+#include "../../libc/vsprintf.h"
 
 uint8_t make_color(enum vga_color fg, enum vga_color bg);
 void tty_scroll(TTYBuffer *tty, int delta);
+
+struct termios *terminal_get_termios() {
+  return &tty.settings;
+}
+
+int terminal_get_bufmode() {
+  return tty.bufmode;
+}
+
+static int _user_stdin_flush(TTYBuffer *tty) {
+  int len = tty->userspace_stdin_cur, ret = 0;
+  tty->userspace_stdin_cur = 0;
+  
+  if (tty->userspace_stdin >= 0) {
+    ret = write(tty->userspace_stdin, tty->userspace_stdin_buf, len);
+  }
+  
+  return ret;
+}
+
+static int _write_user_stdin(TTYBuffer *tty, char *fmt, ...) {
+  va_list vl;
+  char buf[1024];
+  
+  //XXX potential buffer overrun?
+  
+  va_start(vl, fmt);
+  int len = vsprintf(buf, fmt, vl);
+  va_end(vl);
+  
+  //XXX possible overrun here, too?
+  if ((int)tty->userspace_stdin_cur+(int)len >= (int)sizeof(tty->userspace_stdin_buf)) {
+    _user_stdin_flush(tty);
+  }
+  
+  memcpy(tty->userspace_stdin_buf+tty->userspace_stdin_cur, buf, len);
+  tty->userspace_stdin_cur += len;
+  
+  if (tty->bufmode == BUFMODE_RAW) {
+    _user_stdin_flush(tty);
+  } else if (tty->bufmode == BUFMODE_LINE) {
+    for (int i=0; i<len; i++) {
+      if (buf[i] == '\n' || buf[i] == '\r') {
+        _user_stdin_flush(tty);
+        break;
+      }
+    }
+  }
+  
+  return len;
+}
+
+int terminal_set_bufmode(int mode) {
+  tty.bufmode = mode;
+  
+  return 0;
+}
 
 /*
 int smemset(unsigned short *a, unsigned short val, int len) {
@@ -511,11 +580,13 @@ void terminal_initialize() {
 
   memset(&tty, 0, sizeof(tty));
   
+  tty.userspace_stdin = tty.userspace_stdout = -1;
   tty.linelasts = terminal_linelasts;
   tty.width = VGA_WIDTH;
   tty.height = TTY_BUFFER_ROWS;
   tty.buffer = terminal_history;
-
+  tty.bufmode = BUFMODE_LINE;
+  
   tty.buffer_out = (uint16_t*) SCREEN_TEXT_OUT;
   tty.flip = tty_flip;
   tty.fg = COLOR_DEFAULT;
@@ -654,6 +725,54 @@ int terminal_set_hcursor(int x, int y) {
   io_wait();
   outb(crt_data, index & 255);
   io_wait();
+  
+  return 0;
+}
+
+int terminal_set_userstdin(int stdin) {
+  tty.userspace_stdin = stdin;
+  
+  return 0;
+}
+
+int terminal_set_userstdout(int stdout) {
+  tty.userspace_stdout = stdout;
+  
+  return 0;
+}
+
+int terminal_keyevent(short event) {
+  switch (event) {
+    case KEY_UP:
+      _write_user_stdin(&tty, "\33[A");
+      break;
+    case KEY_DOWN:
+      _write_user_stdin(&tty, "\33[B");
+      break;
+    case KEY_LEFT:
+      _write_user_stdin(&tty, "\33[D");
+      break;
+    case KEY_RIGHT:
+      _write_user_stdin(&tty, "\33[C");
+      break;
+    case 27: //pass escape through
+      _write_user_stdin(&tty, "\33");
+      break;
+    case KEY_BACKSPACE:
+      _write_user_stdin(&tty, "\b");
+      break;
+    case KEY_DELETE:
+      _write_user_stdin(&tty, "\33[C\b");
+      break;
+    case '\n':
+      //if (tty->bufmode == BUFMODE_RAW) {
+        //_write_user_stdin(&tty, "\33?M");
+        //_user_stdin_flush(&tty);
+      //}
+      return -1;
+    default:
+      return -1;
+  }
   
   return 0;
 }

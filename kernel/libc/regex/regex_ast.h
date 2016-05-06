@@ -8,7 +8,7 @@ typedef struct Node {
 
   struct Node *parent;
   struct Node **children;
-  int cur, stateid;
+  int cur, stateid, index;
 } Node;
 
 enum {

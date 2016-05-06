@@ -10,10 +10,12 @@
 #ifndef __KERNEL_BUILD__
   #define pmalloc _pmalloc
   #define pfree _pfree
+  #define prealloc _prealloc
 #endif
 
 extern void *pmalloc(size_t size);
 extern void pfree(void *ptr);
+extern void *prealloc(void *ptr, size_t size);
 
 #ifndef malloc
 #define malloc(size) _malloc(size, __FILE__, __LINE__)
@@ -30,6 +32,21 @@ void _free(void *ptr, char *file, int line) {
     return;
   
   pfree(ptr);
+}
+
+#ifndef realloc
+#define realloc(ptr) _realloc(ptr, __FILE__, __LINE__)
+#endif
+void *_realloc(void *ptr, size_t size, char *file, int line) {
+  return prealloc(ptr, size);
+}
+
+size_t ftell(FILE *file) {
+  return (size_t) tell(file->fd);
+}
+
+int fseek(FILE *file, size_t off, int whence) {
+  return lseek(file->fd, off, whence);
 }
 
 FILE *fopen(char *path, char *mode) {
@@ -100,6 +117,10 @@ int fread(void *ptr, size_t size, size_t count, FILE *file) {
   }
   
   return ret;
+}
+
+int feof(FILE *file) {
+  return peof(file->fd);
 }
 
 int fwrite(void *ptr, size_t size, size_t count, FILE *file) {

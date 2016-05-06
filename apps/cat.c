@@ -1,5 +1,7 @@
 #include <stdio.h>
 
+extern void task_yield();
+
 int main(int argc, char **argv) {
   int i;
   
@@ -11,9 +13,17 @@ int main(int argc, char **argv) {
       return -1;
     }
     
-    int ch;
+    int ch, i=0;
     while ((ch = fgetc(file)) != EOF) {
-      fputc(ch, stdout);
+      if (ch != '\r') {
+        fputc(ch, stdout);
+      }
+      
+      i++;
+      if (i > 512) {
+        task_yield();
+        i = 0;
+      }
     }
     
     fclose(file);

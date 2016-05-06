@@ -135,7 +135,7 @@ uint16_t PIC_get_isr(void)
 }
 
 static inline int e9printinfo() {
-  stacktrace(kprintf);
+  stacktrace(0, kprintf);
   
   kprintf("\n============================\n");
   
@@ -171,7 +171,6 @@ void _exc_handler##n(unsigned int flag, uintptr_t eip, uintptr_t code, uintptr_t
   kprintf("eip: %x, code: %x | %x %x %x\n", eip, code, ebp[0], ebp[1], ebp[2]);\
   e9printf("eip: %x, code: %x | %x %x %x\n", eip, code, ebp[0], ebp[1], ebp[2]);\
 \
-  kerror(n, "Got exception " #n);\
   e9printinfo();\
   emergency_proc_exit();\
 }
@@ -186,6 +185,7 @@ void _exc_handler##n(unsigned int flag, uintptr_t eip, uintptr_t code, uintptr_t
   kprintf("eip: %x, code: %x | %x %x %x\n", eip, code, ebp[0], ebp[1], ebp[2]);\
   e9printf("eip: %x, code: %x | %x %x %x\n", eip, code, ebp[0], ebp[1], ebp[2]);\
 \
+  e9printinfo();\
   kerror(n, "Got exception " #n);\
   e9printinfo();\
 }
@@ -204,7 +204,7 @@ void _exc_handler##n(unsigned int flag, uintptr_t eip, uintptr_t code, uintptr_t
   e9printinfo();\
 }
 
-DEATH_EXCEPTION(0); //divide by zero         #DE
+KILLPROC_EXCEPTION(0); //divide by zero      #DE
 
 EXC_HANDLE(1); //debug                       #DB
 WARN_EXCEPTION(2); //non-maskable interrupt  #NMI

@@ -51,7 +51,8 @@ extern int yydebug;
     LINE_BREAK = 261,
     WHITE_SPACE = 262,
     CLASS_NEGATE = 263,
-    UNICODE_BYTE = 264
+    UNICODE_BYTE = 264,
+    QUESTION = 265
   };
 #endif
 

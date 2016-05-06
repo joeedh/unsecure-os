@@ -128,8 +128,10 @@ void _fs_file_init(FSFile *file) {
   memset(file, 0, sizeof(*file));
   
   klock_init(&file->lock);
+  
   file->magic = _FILE_MAGIC;
   file->closed = 0;
+  file->refs = 1;
 }
 
 int _valid_file(int fd) {
@@ -141,8 +143,10 @@ int _valid_file(int fd) {
   if (file->magic != _FILE_MAGIC)
     return 0;
   
-  if (file->closed)
+  if (file->closed) {
+    e9printf("file already closed: %x\n", fd);
     return 0;
+  }
   
   return !bad_fsdev(file->fs, file->device);
 }
@@ -167,7 +171,7 @@ static void _unlock_file(FSFile *file) {
 
 int lseek(int fd, int off, int whence) {
   if (!_valid_file(fd)) {
-    klogf("Invalid file %x\n", fd);
+    klogf("lseek: Invalid file %x\n", fd);
     return -1;
   }
  
@@ -185,6 +189,27 @@ int lseek(int fd, int off, int whence) {
     }
     
     *cursor = ret;
+  } else { //adjust internal pointer directly
+    struct stat st = {0,};
+    
+    file->fs->fstat(file->fs, file->device, file->internalfd, &st);
+    
+    if (whence == SEEK_SET) {
+      *cursor = off;
+    } else if (whence == SEEK_CUR) {
+      *cursor += off;
+    } else if (whence == SEEK_END) {
+      intptr_t newoff = st.st_size - off;
+      
+      if (newoff < 0)
+        newoff = 0;
+      
+      *cursor = newoff;
+    }
+    
+    if (*cursor > st.st_size) {
+      *cursor = st.st_size;
+    }
   }
   
   _unlock_file(file);
@@ -194,7 +219,7 @@ int lseek(int fd, int off, int whence) {
 
 int read(int fd, void *buf, unsigned int bytes) {
   if (!_valid_file(fd)) {
-    klogf("Invalid file %x\n", fd);
+    klogf("read: Invalid file %x\n", fd);
     return -1;
   }
   
@@ -254,7 +279,7 @@ int read(int fd, void *buf, unsigned int bytes) {
 
 int pread(int fd, void *buf, unsigned int bytes, unsigned int off) {
   if (!_valid_file(fd)) {
-    klogf("Invalid file %x\n", fd);
+    klogf("pread: Invalid file %x\n", fd);
     return -1;
   }
   
@@ -331,7 +356,10 @@ int write(int fd, void *buf, unsigned int bytes) {
   int ret, *cursor = !((file->mode & O_PIPE_MODE) && reverse) ? &file->pipe_rcursor : &file->cursor;
   
   ret = file->fs->pwrite(file->fs, file->device, file->internalfd, buf, bytes, *cursor);
-  *cursor += ret;
+  
+  if (!(file->mode & O_NOSEEK)) {
+    *cursor += ret;
+  }
   
   //kprintf("cursorw: %d, ret: %d\n", *cursor, ret);
   
@@ -445,7 +473,12 @@ int tell(int fd) {
     return -1;
   
   _lock_file(file);
-  int ret = file->fs->tell(file->fs, file->device, file->internalfd);
+
+  //XXX: macroatize me!
+  int reverse = (!!(file->mode & O_PIPE_MODE)) ^ (!!(file->mode & _O_REVERSE));
+  int *cursor = ((file->mode & O_PIPE_MODE) && reverse) ? &file->pipe_rcursor : &file->cursor;
+  
+  int ret = file->fs->tell ? (int)file->fs->tell(file->fs, file->device, file->internalfd) : (int)*cursor;
   _unlock_file(file);
   
   return ret;
@@ -563,11 +596,28 @@ int open(const unsigned char *path, int modeflags) {
   return (int)file;
 }
 
+int fs_clone(int fd) {
+  FSFile *file = (FSFile*)fd;
+  
+  if (!_valid_file(fd))
+    return -1;
+  
+  file->refs++;
+  
+  return fd;
+}
+
 int close(int fd) {
   FSFile *file = (FSFile*)fd;
   
   if (!_valid_file(fd))
     return -1;
+  
+  //do reference counting
+  file->refs--;
+  if (file->refs > 0) {
+    return 0;
+  }
   
   file->closed = 1;
 
@@ -576,7 +626,9 @@ int close(int fd) {
     file->fs->close(file->fs, file->device, file->internalfd);
     _unlock_file(file);
   }
-
+  
+  file->magic = 0;
+  
   Process *p = process_get_current(0);
   LinkNode *node;
   
@@ -587,8 +639,27 @@ int close(int fd) {
       break;
     }
   }
-  
+
   return 0;
+}
+
+//return 1 if eof, 0 otherwise, or <0, for error
+int peof(int fd) {
+  FSFile *file = (FSFile*)fd;
+  
+  if (!_valid_file(fd))
+    return -1;
+  
+  _lock_file(file);
+  
+  //XXX: macroatize me!
+  int reverse = (!!(file->mode & O_PIPE_MODE)) ^ (!!(file->mode & _O_REVERSE));
+  int *cursor = ((file->mode & O_PIPE_MODE) && reverse) ? &file->pipe_rcursor : &file->cursor;
+  
+  int ret = file->fs->eof ? file->fs->eof(file->fs, file->device, file->internalfd, *cursor) : -1;
+  
+  _unlock_file(file);
+  return ret;
 }
 
 //static struct {struct dirent item, DIR dir} dirs[32];
@@ -819,6 +890,63 @@ int poll(struct pollfd pollfds[], nfds_t len, int timeout_ms) {
       ret = -1;
     }
   }
+  
+  return ret;
+}
+
+int _fs_set_mode(int fd, int mode) {
+  if (!_valid_file(fd))
+    return -1;
+  
+  FSFile *file = (FSFile*) fd;
+  
+  _lock_file(file);
+  
+  file->mode |= mode;
+  if (file->fs->setmode) {
+    file->fs->setmode(file->fs, file->device, file->internalfd, mode);
+  }
+  
+  _unlock_file(file);
+  
+  return 0;
+}
+
+int _fs_clear_mode(int fd, int mode) {
+  if (!_valid_file(fd))
+    return -1;
+  
+  FSFile *file = (FSFile*) fd;
+  
+  _lock_file(file);
+  
+  file->mode &= ~mode;
+  if (file->fs->clearmode) {
+    file->fs->clearmode(file->fs, file->device, file->internalfd, mode);
+  }
+  
+  _unlock_file(file);
+  
+  return 0;
+}
+
+int fs_ioctl_handle(int fd, intptr_t req, intptr_t arg) {
+  if (!_valid_file(fd)) {
+    klogf("lseek: Invalid file %x\n", fd);
+    return -1;
+  }
+ 
+  FSFile *file = (FSFile*) fd;
+  //int reverse = (!!(file->mode & O_PIPE_MODE)) ^ (!!(file->mode & _O_REVERSE));
+  int ret = -1; // *cursor = ((file->mode & O_PIPE_MODE) && reverse) ? &file->pipe_rcursor : &file->cursor;
+  
+  _lock_file(file);
+  
+  if (file->fs->ioctl) {
+    ret = file->fs->ioctl(file->fs, file->device, file->internalfd, req, arg);
+  }
+  
+  _unlock_file(file);
   
   return ret;
 }

@@ -16,19 +16,23 @@ static int myfputchar(unsigned char **arg, unsigned char c) {
   return 1;
 }
 
-#define PRINTF int vsprintf(unsigned char **arg, char *args, va_list vl)
+#define PRINTF int _vsprintf1(unsigned char **arg, char *args, va_list vl)
 #define PUTCHAR(c) myfputchar(arg, c)
 #define KPRINTNUMARG arg
 
 #include "vprintf.h"
 
+int vsprintf(char *out, char *fmt, va_list vl) {
+  unsigned char *ptr = (unsigned char*) out;
+  
+  return _vsprintf1(&ptr, fmt, vl);
+}
+
 int sprintf(char *out, char *fmt, ...) {
   va_list vl;
   
   va_start(vl, fmt);
-  unsigned char *ptr = (unsigned char*) out;
-  
-  int ret = vsprintf(&ptr, fmt, vl);
+  int ret = vsprintf(out, fmt, vl);
   va_end(vl);
   
   return ret;

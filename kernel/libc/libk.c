@@ -15,7 +15,7 @@
 
 #include "../drivers/tty/tty.h"
 
-volatile unsigned int k_debug;
+volatile unsigned int k_debug = 0;
 
 int kputint(int n) {
   static unsigned char buf[32];
@@ -99,77 +99,6 @@ int kputuhex(unsigned int n) {
   }
   
   return i+2;
-}
-
-unsigned char uppermap[255];
-unsigned char lowermap[255];
-
-int toupper(int c) {
-  c = c & 255;
-  
-  return uppermap[c];
-}
-
-int tolower(int c) {
-  c = c & 255;
-  
-  return lowermap[c];
-}
-
-int isupper(int c) {
-  c = c & 255;
-  
-  return c == uppermap[c];
-}
-
-int islower(int c) {
-  c = c & 255;
-  
-  return c == lowermap[c];
-}
-
-int isprint(int c) {
-  return c > 0x1f && c != 0x7f;
-}
-
-void libk_initialize() {
-  k_debug = 0;
-  
-  for (int i=0; i<255; i++) {
-    uppermap[i] = lowermap[i] = i;
-  }
-  
-  for (int i='a'; i <= 'z'; i++) {
-    uppermap[i] = i - 'a' + 'A';
-  }
-  
-  uppermap['`'] = '~';
-  uppermap['1'] = '!';
-  uppermap['2'] = '@';
-  uppermap['3'] = '#';
-  uppermap['4'] = '$';
-  uppermap['5'] = '%';
-  uppermap['6'] = '^';
-  uppermap['7'] = '&';
-  uppermap['8'] = '*';
-  uppermap['9'] = '(';
-  uppermap['0'] = ')';
-  
-  uppermap['-'] = '_';
-  uppermap['='] = '+';
-  uppermap['['] = '{';
-  uppermap[']'] = '}';
-  
-  uppermap[';'] = ':';
-  uppermap['\''] = '"';
-  uppermap[','] = '<';
-  uppermap['.'] = '>';
-  uppermap['/'] = '?';
-  uppermap['\\'] = '|';
-  
-  for (int i=0; i<255; i++) {
-    lowermap[uppermap[i]] = i;
-  }
 }
 
 int kerror(int code, char *message) {

@@ -12,6 +12,9 @@
 
 #include "sh.h"
 
+#include "termios.h"
+#include "stropts.h"
+
 #define kfree free
 #define kmalloc malloc
 
@@ -217,9 +220,9 @@ typedef struct shlexstate {
   char *c, *scratch;
 } shlexstate;
 
-static char *shlex2_putenv(char *c, shlexstate *state);
+static char *myshlex2_putenv(char *c, shlexstate *state);
 
-static char *shlex2_state0(char *c, shlexstate *state) {
+static char *myshlex2_state0(char *c, shlexstate *state) {
   switch (*c) {
     case ' ':
     case '\t':
@@ -227,7 +230,7 @@ static char *shlex2_state0(char *c, shlexstate *state) {
       c++;
       break;
     case '$': {
-      c = shlex2_putenv(c, state);
+      c = myshlex2_putenv(c, state);
       break;
     }
     case '\"':
@@ -241,7 +244,7 @@ static char *shlex2_state0(char *c, shlexstate *state) {
   
   return c;
 }
-static char *shlex2_state1(char *c, shlexstate *state) {
+static char *myshlex2_state1(char *c, shlexstate *state) {
   switch (*c) {
     case '"':
       state->state = 0;
@@ -251,7 +254,7 @@ static char *shlex2_state1(char *c, shlexstate *state) {
     case '\\':
       c++;
     case '$': {
-      c = shlex2_putenv(c, state);
+      c = myshlex2_putenv(c, state);
       break;
     }
     default:
@@ -266,11 +269,11 @@ static char *shlex2_state1(char *c, shlexstate *state) {
 typedef char *(*shlexfunc)(char *c, shlexstate *state);
 
 static shlexfunc shlex_states[2] = {
-  shlex2_state0,
-  shlex2_state1
+  myshlex2_state0,
+  myshlex2_state1
 };
 
-static char *shlex2_putenv(char *c, shlexstate *state) {
+static char *myshlex2_putenv(char *c, shlexstate *state) {
   int valid = 0;
   char *env;
   
@@ -309,7 +312,7 @@ static char *shlex2_putenv(char *c, shlexstate *state) {
   return c;
 }
 
-int shlex2(char *line, char *envp[MAX_ARGV]) {
+int myshlex2(char *line, char *envp[MAX_ARGV]) {
   char *c = line;
   
   shlexstate state;
@@ -334,7 +337,7 @@ int shlex2(char *line, char *envp[MAX_ARGV]) {
 }
 
 //modifies/splits line
-int shlex(char *line, char *outbuf[MAX_ARGV]) {
+int myshlex(char *line, char *outbuf[MAX_ARGV]) {
   int n=0, argc=0, stop=0;
   
   if (!line || line[0] == 0) {
@@ -377,6 +380,8 @@ int commandexec_spawn(ShellState *state, int argc, char **argv) {
   
   extern char **environ;
   
+  stty_line_mode();
+  
   int ret = posix_spawn(&pid, binpath, NULL, NULL, argv, environ);
   
   if (ret != 0) {
@@ -412,8 +417,48 @@ int printprompt(ShellState *state) {
   printf("%s$ ", state->cwd);
 }
 
+int history_add(ShellState *state, char *command) {
+  LinkNode *last = (LinkNode*) state->history.last;
+  
+  if (last && strcmp((const char*)last->data, command)==0) {
+    return -1; //ignore duplicate entries
+  }
+  
+  LinkNode *node = malloc(sizeof(LinkNode));
+  node->data = strdup(command);
+  
+  klist_append(&state->history, node);
+  
+  return 0;
+}
+
+int stty_line_mode() {
+  int lflag=0;
+  
+  ioctl(stdin->fd, TCGET_LOCALFLAG, (intptr_t)&lflag);
+  lflag |= ECHO;
+  ioctl(stdin->fd, TCSET_LOCALFLAG, lflag);
+  
+  //turn on line editing mode for child processes
+  ioctl(stdin->fd, TCSET_BUFM, BUFM_LINE);
+}
+
+int stty_raw_mode() {
+  int lflag=0;
+  
+  ioctl(stdin->fd, TCGET_LOCALFLAG, (intptr_t)&lflag);
+  lflag &= ~ECHO;
+  ioctl(stdin->fd, TCSET_LOCALFLAG, lflag);
+  
+  //turn on raw mode for command line editing, which shell buffers itself
+  ioctl(stdin->fd, TCSET_BUFM, BUFM_RAW);  
+}
+
 int interactive(ShellState *state, int argc, char **argv) {
   printprompt(state);
+  
+  //shell echos itself during command editing mode
+  stty_raw_mode();
   
   while (1)  {
     task_yield();
@@ -422,12 +467,20 @@ int interactive(ShellState *state, int argc, char **argv) {
       int status;
       
       if (waitpid(state->blocking_proc->pid, &status, WNOHANG) == state->blocking_proc->pid) {
+        stty_raw_mode();
+        
         state->blocking_proc = NULL;
         printprompt(state);
       }
     }
     
-    short code = (short)keyboard_poll();
+    //short code = (short)keyboard_poll();
+    short code = -1;
+    
+    if (!feof(stdin)) {
+      code = (short) fgetc(stdin);
+      //e9printf("got code: %x\n", code);
+    }
     
     if (code < 0 || (code & 128)) {
       continue;
@@ -435,8 +488,10 @@ int interactive(ShellState *state, int argc, char **argv) {
     
     short ch = code & 127;
     
-    if (keyboard_isprint(ch) || ch == '\r' || ch == '\n' || ch == '\t') {
-      ch = keyboard_handle_case(ch);
+    //e9printf("bleh\n");
+    
+    if (isprint(ch) || ch == '\r' || ch == '\n' || ch == '\t') {
+      //ch = keyboard_handle_case(ch);
       
       if (state->pipe != NULL) {
         fputc(ch, state->pipe);
@@ -459,7 +514,12 @@ int interactive(ShellState *state, int argc, char **argv) {
         state->commandbuf[state->commandlen] = 0;
         strlcpy(buf, state->commandbuf, sizeof(buf));
         
-        argc2 = shlex(buf, argv2);
+        history_add(state, state->commandbuf);
+        
+        if (state->history_cur && state->history_cur->next)
+          state->history_cur = state->history_cur->next;
+        
+        argc2 = myshlex(buf, argv2);
         
         state->cursorx = 0;
         state->commandlen = 0;
@@ -476,6 +536,8 @@ int interactive(ShellState *state, int argc, char **argv) {
         if (!state->blocking_proc) {
           printprompt(state);
         }
+        
+        state->historyflag = 1;
       } else if (ch == '\r') {
         state->cursorx = 0;
         state->commandlen = 0;
@@ -514,6 +576,8 @@ int interactive(ShellState *state, int argc, char **argv) {
         state->commandbuf[state->cursorx] = ch;
         state->cursorx++;
         state->commandlen++;
+        
+        state->historyflag = 0;
       }
     } else {
       switch (ch) {
@@ -541,7 +605,7 @@ int interactive(ShellState *state, int argc, char **argv) {
           break;
         case KEY_DELETE:
           break;
-        case KEY_BACKSPACE: {
+        case '\b': {
           if (state->cursorx > 0) {
             for (int i=state->cursorx; i<state->commandlen-1; i++) {
               state->commandbuf[i] = state->commandbuf[i+1];
@@ -552,6 +616,8 @@ int interactive(ShellState *state, int argc, char **argv) {
             
             fputc(8, stdout);
           }
+          
+          state->historyflag = 0;
           break;
         }
         case KEY_PAGEUP:
@@ -565,6 +631,35 @@ int interactive(ShellState *state, int argc, char **argv) {
           fputc('[', stdout);
           fputc(15, stdout);
           fputc('T', stdout);
+          break;
+        
+        case KEY_UP:
+        case KEY_DOWN:
+          if (!state->history.first)
+            break;
+          if (!state->history_cur) 
+            state->history_cur = state->history.last;
+          
+          if (ch == KEY_UP && state->history_cur->prev)
+            state->history_cur = state->history_cur->prev;
+          else if (ch == KEY_DOWN && state->history_cur->next)
+            state->history_cur = state->history_cur->next;
+            
+          if (!state->history_cur) 
+            break;
+          
+          int len = strlen((const char*)state->history_cur->data);
+          strlcpy(state->commandbuf, (const char*)state->history_cur->data, len+1);
+          
+          state->cursorx = len;
+          state->commandlen = len;
+          
+          fputc('\r', stdout);
+          printprompt(state);
+          fprintf(stdout, "%s", state->commandbuf);
+          fflush(stdout);
+          
+          state->historyflag = 1;
           break;
       }
     }

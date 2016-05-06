@@ -177,7 +177,7 @@ static inline void _klock_lock_(Lock *lock DEBUG_ARGS, int mode) {
   unsigned int state1 = safe_entry();
   
   if (lock->state && !(mode === LOCKR && lock->access == LOCKR)) {
-    stacktrace(e9printf);
+    stacktrace(0, e9printf);
   }
   
   safe_exit(state1);

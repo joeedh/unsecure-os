@@ -73,6 +73,48 @@ void *pmalloc(size_t size) {
   return ret;
 }
 
+void *prealloc(void *mem, size_t size) {
+  if (!size)
+    return NULL;
+
+  Process *p = process_get_current(0);
+  if (!p) {
+    kerror(-1, "No active process!");
+  }
+  
+  if (mem) {
+    krwlock_lock(&p->resource_lock);
+    
+    PMemRef *node = kmalloc_get_custom_ptr(mem);
+    
+    if (node && node->magic1 == PMEMREF_MAGIC1 && node->magic2 == PMEMREF_MAGIC2) {
+      klist_remove(&p->memory, node);
+      kfree(node);
+    }
+    
+    krwlock_unlock(&p->resource_lock);
+  }
+  
+  void *ret = krealloc(mem, size);
+  
+  if (ret) {
+    krwlock_lock(&p->resource_lock);
+    
+    PMemRef *node = kmalloc(sizeof(PMemRef));
+    node->magic1 = PMEMREF_MAGIC1;
+    node->magic2 = PMEMREF_MAGIC2;
+    
+    kmalloc_set_custom_ptr(ret, node);
+    
+    node->data = ret;
+    klist_append(&p->memory, node);
+    
+    krwlock_unlock(&p->resource_lock);
+  }
+  
+  return ret;
+}
+
 int pfree(void *mem) {
     PMemRef *ref = kmalloc_get_custom_ptr(mem);
     if (!ref)
@@ -88,6 +130,8 @@ int pfree(void *mem) {
       krwlock_unlock(&p->resource_lock);
       return -1;
     }
+    
+    ref->magic1 = ref->magic2 = 0;
     
     kfree(ref->data);
     kfree(ref);
@@ -168,9 +212,9 @@ int posix_spawn(int *pid_out, const char *path, char *file_actions, char *attrp,
     kerror(-1, "no active process!");
   }
   
-  int stdout = process_get_stdout(p);
-  int stdin = process_get_stdin(p);
-  int stderr = process_get_stderr(p);
+  int stdout = fs_clone(process_get_stdout(p));
+  int stdin = fs_clone(process_get_stdin(p));
+  int stderr = fs_clone(process_get_stderr(p));
   
   void **ptrs = kmalloc(sizeof(void*)*7);
   if (!ptrs) {

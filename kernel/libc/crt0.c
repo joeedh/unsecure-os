@@ -3,6 +3,7 @@
 #include "../syscalls/syscalls.h"
 
 extern int main(int argc, char **argv);
+extern void libc_initialize();
 
 unsigned char **environ;
 
@@ -29,6 +30,8 @@ int _start(SysCallPtr *calltable, int sin, int sout,
   while (argv[argc]) {
     argc++;
   }
+  
+  libc_initialize();
   
   return main(argc, argv);
 }

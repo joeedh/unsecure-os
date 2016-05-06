@@ -39,6 +39,9 @@ int fread(void *ptr, size_t size, size_t count, FILE *file);
 int fwrite(void *ptr, size_t size, size_t count, FILE *file);
 int fgetc(FILE *file);
 int fputc(int ch, FILE *file);
+int feof(FILE *stream);
+size_t ftell(FILE *file);
+int fseek(FILE *file, size_t off, int whence);
 
 FILE *popen(const char *command, const char *mode);
 

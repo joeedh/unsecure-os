@@ -15,7 +15,15 @@
 typedef struct MemFile {
   int size;
   int written;
+  int simple_pipemode, pad;
 } MemFile;
+
+static int kmemfile_eof(void *vself, BlockDeviceIF *device, int filefd, size_t off) {
+  MemFile *file = (MemFile*)filefd;
+  file--;
+  
+  return off >= (size_t)file->written;
+}
 
 static int kmemfile_pread(void *self, BlockDeviceIF *device, int filefd, const char *buf, size_t bufsize, size_t fileoff) {
   MemFile *file = (MemFile*)filefd;
@@ -40,6 +48,25 @@ static int kmemfile_pread(void *self, BlockDeviceIF *device, int filefd, const c
     i++;
   }
   
+  if (file->simple_pipemode) {
+    b = (unsigned char*)buf;
+    
+    //shift
+    for (int j=i; j<file->written; j++) {
+      b[j-i] = b[j]; 
+    }
+      
+    file->written -= i;
+  }
+  
+  if (file->written < 0) {
+    //error!
+    e9printf("ERROR in memory_file.c: file->written was less than zero! it was: %d\n", file->written);
+    //hrm. . .return an error code?
+    
+    file->written = 0;
+  }
+  
   return i;
 }
 
@@ -54,9 +81,6 @@ static int kmemfile_pwrite(void *self, BlockDeviceIF *device, int filefd, const 
   if (fileoff > (unsigned int)size || (fileoff+bufsize) >= (unsigned int)file->size)
     return 0;
   
-  if ((unsigned int)file->written < (unsigned int)fileoff + (unsigned int)bufsize)
-    file->written = (int)(fileoff + bufsize);
-  
   unsigned char *a = (unsigned char*)(file + 1);
   unsigned char *b = (unsigned char*)buf;
   
@@ -68,6 +92,9 @@ static int kmemfile_pwrite(void *self, BlockDeviceIF *device, int filefd, const 
     fileoff++;
     i++;
   }
+  
+  if ((unsigned int)file->written < (unsigned int)fileoff)
+    file->written = (int)fileoff;
   
   return i;
 }
@@ -98,6 +125,26 @@ static int kmemfile_fstat(void *self, BlockDeviceIF *device, int filefd, struct 
   return 0;
 }
 
+static int kmemfile_setmode(void *vself, BlockDeviceIF *device, int filefd, int mode) {
+  MemFile *file = (MemFile*)filefd;
+  file--;
+  
+  if (mode == O_NOSEEK)
+    file->simple_pipemode = 1;
+  
+  return 0;
+}
+
+static int kmemfile_clearmode(void *vself, BlockDeviceIF *device, int filefd, int mode) {
+  MemFile *file = (MemFile*)filefd;
+  file--;
+  
+  if (mode == O_NOSEEK)
+    file->simple_pipemode = 0;
+  
+  return 0;
+}
+
 int kmemfile_create(int size, int added_flags) {
   FSInterface *fs = kmalloc(sizeof(*fs));
   
@@ -110,6 +157,10 @@ int kmemfile_create(int size, int added_flags) {
   fs->close = kmemfile_close;
   fs->accessmode = kmemfile_accessmode;
   fs->fstat = kmemfile_fstat;
+  fs->eof = kmemfile_eof;
+  fs->setmode = kmemfile_setmode;
+  fs->clearmode = kmemfile_clearmode;
+  
   //fs->mode |= added_flags;
   
   FSFile *file = kmalloc(sizeof(FSFile));
@@ -127,6 +178,8 @@ int kmemfile_create(int size, int added_flags) {
   file->custom = size;
   
   MemFile *data = kmalloc(size + sizeof(MemFile));
+  memset(data, 0, sizeof(*data));
+  
   data->size = size;
   data->written = 0;
   

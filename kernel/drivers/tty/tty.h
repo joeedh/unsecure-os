@@ -30,12 +30,29 @@ enum vga_color {
 
 #define TTY_BUFFER_ROWS 900
 
+enum {
+  BUFMODE_LINE,
+  BUFMODE_RAW
+};
+
+struct termios;
+struct termios *terminal_get_termios();
+
+int terminal_get_bufmode();
+
+int terminal_set_bufmode(int mode);
+int terminal_set_userstdin(int stdin);
+int terminal_set_userstdout(int stdout);
+
 void terminal_initialize();
 void terminal_setcolor(uint8_t color);
 void terminal_putchar(unsigned char c);
 void terminal_writestring(const unsigned char* data);
 void terminal_clear();
 void terminal_flush();
+
+//non-character event
+int terminal_keyevent(short event);
 
 int terminal_move_cursor(int delta);
 

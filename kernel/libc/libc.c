@@ -51,13 +51,13 @@ extern SysCallPtr *syscalls;
  { return syscalls[i].icall6p(p1, p2, p3, p4, p5, p6); }
 
 #define ESYS_I4I(name, i) int PREFIX(name)(int a, int b, int c, int d)\
- { int ret = syscalls[i].icall4i(a, b, c, d); if (ret) errno = -ret; return ret;}
+ { int ret = syscalls[i].icall4i(a, b, c, d); if (ret < 0) errno = -ret; return ret;}
 #define ESYS_I3I(name, i) int PREFIX(name)(int a, int b, int c)\
- { int ret = syscalls[i].icall3i(a, b, c); if (ret) errno = -ret; return ret;}
+ { int ret = syscalls[i].icall3i(a, b, c); if (ret < 0) errno = -ret; return ret;}
 #define ESYS_I2I(name, i) int PREFIX(name)(int a, int b)\
- { int ret = syscalls[i].icall2i(a, b); if (ret) errno = -ret; return ret;}
+ { int ret = syscalls[i].icall2i(a, b); if (ret < 0) errno = -ret; return ret;}
 #define ESYS_I1I(name, i) int PREFIX(name)(int a)\
- { int ret = syscalls[i].icall1i(a); if (ret) errno = -ret; return ret;}
+ { int ret = syscalls[i].icall1i(a); if (ret < 0) errno = -ret; return ret;}
 
 #define STUB(name) void PREFIX(name)(){}
 
@@ -82,6 +82,7 @@ SYS_I1I(wait, SYS_WAIT);
 SYS_I1I(waitpid, SYS_WAITPID);
 SYS_P1I(_pmalloc, SYS_PMALLOC);
 SYS_I1I(_pfree, SYS_PFREE);
+SYS_I2I(_prealloc, SYS_PREALLOC);
 ESYS_I1I(flush, SYS_FLUSH);
 SYS_I0V(keyboard_poll, SYS_KEYBOARD_POLL);
 SYS_I1I(keyboard_isprint, SYS_KEYBOARD_ISPRINT);
@@ -105,6 +106,8 @@ ESYS_I4I(pread, SYS_PREAD);
 SYS_I0V(dmesg_size, SYS_DMESG_SIZE);
 ESYS_I2I(stat, SYS_STAT); //XXX 64-bit type error!
 SYS_I0V(clock, SYS_CLOCK);
+ESYS_I1I(peof, SYS_PEOF);
+ESYS_I1I(tell, SYS_TELL);
 
 int e9printf(char *fmt, ...) {
   va_list va;
@@ -113,6 +116,17 @@ int e9printf(char *fmt, ...) {
   va_start(va, fmt);
   int ret = ve9printf(fmt, va);
   va_end(va);
+  
+  return ret;
+}
+
+int ioctl(int fd, uintptr_t req, uintptr_t arg) {
+  int (*scall)(int, uintptr_t, uintptr_t) = (void*) syscalls[SYS_IOCTL].vcall0v;
+  int ret = scall(fd, req, arg);
+  
+  if (ret < 0) {
+    errno = ret;
+  }
   
   return ret;
 }

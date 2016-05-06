@@ -12,8 +12,8 @@
 #include "../../libc/list.h"
 
 #define EXT2_DEBUG  0
-//#define extdebug(...) e9printf(__VA_ARGS__)
-#define extdebug(...)
+#define extdebug(...) e9printf(__VA_ARGS__)
+//#define extdebug(...)
 
 //INODES START AT 1!
 
@@ -225,7 +225,7 @@ typedef struct ext2fs {
 typedef struct ext2fs_file {
   struct ext2fs_file *next, *prev;
   INode inode;
-  int inode_nr;
+  int inode_nr, block_nr, group_nr;
   int id;
 } ext2fs_file;
 
@@ -472,6 +472,23 @@ static size_t read_inode_contents(BlockDeviceIF *device, ext2fs *efs,
 }
 
 static ext2fs_file *file_from_internalfd(ext2fs *efs, int fd, int *index_out);
+
+static int ext2_eof(void *vself, BlockDeviceIF *device, int filefd, size_t off) {
+  ext2fs *self = vself;
+  ext2fs_file *file = file_from_internalfd(self, filefd, NULL);
+  
+  if (!file) {
+    _fs_error(self, -1, "Bad internal fd descriptor");
+    return -1;
+  }
+  
+  //ensure file->inode is up-to-date
+  if (read_inode(self, device, file->inode_nr, &file->inode) < 0) {
+    return -1;
+  }
+
+  return off >= inode_get_size(&file->inode);
+}
 
 int ext2_openfile(void *vself, BlockDeviceIF *device, const char *utf8path, int utf8path_size, int oflag) {
   ext2fs *self = vself;
@@ -959,6 +976,7 @@ FSInterface *kext2fs_create(BlockDeviceIF *device) {
   fs->head.open = ext2_openfile;
   fs->head.close = ext2_closefile;
   fs->head.pread = ext2_preadfile;
+  fs->head.eof = ext2_eof;
   
   fs->idgen = 1;
   

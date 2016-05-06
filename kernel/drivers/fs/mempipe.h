@@ -1,6 +1,6 @@
-#ifndef _MEMFILE_H
-#define _MEMFILE_H
+#ifndef _MEMPIPE_H
+#define _MEMPIPE_H
 
-int kpipefile_create(int size);
+int kmempipe_create(int size, int added_flags);
 
-#endif /* _MEMFILE_H */
+#endif /* _MEMPIPE_H */

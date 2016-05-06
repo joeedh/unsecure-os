@@ -8,13 +8,13 @@
 
 #define bit unsigned int
 typedef struct PCIConfigAddress {
-  bit unused:2;
-  bit pregister:6;
-  bit function:3;
-  bit device:5;
-  bit bus:8;
-  bit reserved:7;
-  bit enabled:1;
+  bit unused:2;     //2
+  bit pregister:6;  //8
+  bit function:3;   //11
+  bit device:5;     //16
+  bit bus:8;        //24
+  bit reserved:7;   //31
+  bit enabled:1;    //32
 } PCIConfigAddress;
 #undef bit
 
@@ -59,5 +59,15 @@ uint16_t pciConfigReadWord (uint8_t bus, uint8_t slot,
     return (tmp);
  }
 #endif
+
+
+uint16_t PCI_getVendorID(uint8_t bus, uint8_t device, uint8_t function);
+uint16_t PCI_getDeviceID(uint8_t bus, uint8_t device, uint8_t function);
+uint16_t PCI_getHeaderType(uint8_t bus, uint8_t device, uint8_t function);
+uint16_t PCI_getDeviceClass(uint8_t bus, uint8_t device, uint8_t function);
+
+void PCI_checkFunction(uint8_t bus, uint8_t device, uint8_t function);
+void PCI_checkDevice(uint8_t bus, uint8_t device);
+
 
 #endif /* _PCI_H */

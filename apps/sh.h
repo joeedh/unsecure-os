@@ -20,6 +20,7 @@ typedef struct ChildProc {
   int pid;
 } ChildProc;
 
+struct LinkNode;
 typedef struct ShellState {
   char cwd[512];
   char commandbuf[4192];
@@ -32,6 +33,13 @@ typedef struct ShellState {
   
   List running_procs;
   ChildProc *blocking_proc;
+  
+  List history;
+  struct LinkNode *history_cur;
+  int historyflag;
 } ShellState;
+
+int stty_line_mode();
+int stty_raw_mode();
 
 #endif /* _SH_H */

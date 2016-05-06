@@ -7,6 +7,8 @@
 #include "drivers/tty/tty.h"
 #include "drivers/keyboard/keyboard.h"
 #include "drivers/tty/tty_file.h"
+#include "drivers/hdd/hdd.h"
+#include "drivers/pci/pci.h"
 #include "io.h"
 #include "interrupts.h"
 #include "gdt.h"
@@ -24,7 +26,6 @@
 
 #include "SudoBios.h"
 
-extern void pci_initialize();
 extern void parse_bootinfo(void *bootinfo1);
 extern void fpu_initialize();
 
@@ -136,7 +137,7 @@ void startup_kernel(void *bootinfo1) {
   e9printf("parsing boot info. . .\n");
   parse_bootinfo(bootinfo1);
 
-  libk_initialize();
+  libc_initialize();
   kmalloc_init_with_holes();
   dmesg_initialize();
   
@@ -169,8 +170,8 @@ void startup_kernel(void *bootinfo1) {
   keyboard_post_irq_enable();
   io_wait();
   
-  e9printf("initializing pci. . .\n");
   pci_initialize();
+  hdd_initialize();
   
   e9printf("initializing the fpu. . .\n");
   fpu_initialize();

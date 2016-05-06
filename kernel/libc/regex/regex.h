@@ -1,6 +1,8 @@
 #ifndef _REGEX_H
 #define _REGEX_H
 
+struct lexer;
+
 #include "reparse.h"
 
 struct Node;

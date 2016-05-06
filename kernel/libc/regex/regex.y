@@ -14,7 +14,12 @@ struct Node;
 #include <stdlib.h>
 #include <math.h>
 
+#ifndef REGEX_INTERN
 #define REGEX_INTERN
+#endif
+
+void yyerror(lexer *lex, char *msg);
+
 #define yylex regex_yylex
 
 //extern int regex_yylex(int*, void*);
@@ -32,6 +37,7 @@ extern struct Node *_re_make_node(int type, int value, unsigned char *fmt, ...);
 %token WHITE_SPACE
 %token CLASS_NEGATE
 %token UNICODE_BYTE
+%token QUESTION
 
 %start start
 %defines "reparse.h"
@@ -42,8 +48,19 @@ extern struct Node *_re_make_node(int type, int value, unsigned char *fmt, ...);
 cp : ASCII        {$$ = node(NCHARACTER, $1, "");}
    | UNICODE_BYTE {$$ = node(NCHARACTER, $1, "");}
 
-csetlist   : cp           {$$ = node(NCLASS, "nnn", $1, $1, $1);}
-           | csetlist cp  {$$ = $1; node_append($1, $2);}
+cset_cp : cp
+        | '-'    {$$ = node(NCHARACTER, $1, "");}
+        | '+'    {$$ = node(NCHARACTER, $1, "");}
+        | '^'    {$$ = node(NCHARACTER, $1, "");}
+        | '*'    {$$ = node(NCHARACTER, $1, "");}
+        | '.'    {$$ = node(NCHARACTER, $1, "");}
+        | '|'    {$$ = node(NCHARACTER, $1, "");}
+        | '['    {$$ = node(NCHARACTER, $1, "");}
+        | '('    {$$ = node(NCHARACTER, $1, "");}
+        | ')'    {$$ = node(NCHARACTER, $1, "");}
+
+csetlist   : cset_cp           {$$ = node(NCLASS, 0, "n", $1);}
+           | csetlist cset_cp  {$$ = $1; node_append($1, $2);}
            
 cset       : '[' csetlist ']'     {$$ = $2;}
            | '[' '^' csetlist ']' {$$ = node(NNEGATE, 0, "n", $3);}

@@ -16,6 +16,8 @@
 #include "../drivers/tty/tty.h"
 #include "../drivers/keyboard/keyboard.h"
 
+#include "../drivers/fs/ioctl.h"
+
 #include "../SudoBios.h"
 #include "../sharedmem/shm.h"
 #include "../dmesg/dmesg.h"
@@ -33,6 +35,10 @@ void *pmallocwrap(int size) {
 
 void pfreewrap(void *mem) {
   pfree(mem);
+}
+
+void *preallocwrap(void *mem, size_t size) {
+  return prealloc(mem, size);
 }
 
 /*
@@ -75,6 +81,7 @@ void *_syscalltable[] = {
   SYSCALL(waitpid),
   SYSCALL(pmallocwrap),
   SYSCALL(pfreewrap),
+  SYSCALL(preallocwrap),
   SYSCALL(flush),
   SYSCALL(keyboard_poll),
   SYSCALL(keyboard_isprint),
@@ -98,7 +105,10 @@ void *_syscalltable[] = {
   SYSCALL(pread),
   SYSCALL(dmesg_size),
   SYSCALL(stat),
-  SYSCALL(clock)
+  SYSCALL(clock),
+  SYSCALL(peof),
+  SYSCALL(ioctl),
+  SYSCALL(tell)
 };
 
 int _totsyscalls = sizeof(_syscalltable) / sizeof(void*);

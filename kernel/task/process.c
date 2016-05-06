@@ -16,6 +16,7 @@
 #include "../drivers/keyboard/keyboard.h"
 #include "../drivers/tty/tty.h"
 #include "../drivers/fs/memfile.h"
+#include "../drivers/fs/mempipe.h"
 #include "../drivers/fs/fs_interface.h"
 #include "../drivers/fs/fs_file.h"
 #include "../task/task.h"
@@ -293,16 +294,16 @@ int process_start(Process *process) {
   //temporary ipc pipe
   //need to design proper system.
   //sockets?  seem to have issues for ipc, dbus?
-  process->temp_ipc = kmemfile_create(DEFAULT_STDFILE_SIZE*4, O_NONBLOCK);
+  process->temp_ipc = kmempipe_create(DEFAULT_STDFILE_SIZE*4, O_NONBLOCK);
   
   if (process->stdin == 0) {
-    process->stdin = kmemfile_create(DEFAULT_STDFILE_SIZE, 0);
+    process->stdin = kmempipe_create(DEFAULT_STDFILE_SIZE, 0);
   }
   if (process->stdout == 0) {
-    process->stdout = kmemfile_create(DEFAULT_STDFILE_SIZE, 0);
+    process->stdout = kmempipe_create(DEFAULT_STDFILE_SIZE, 0);
   }
   if (process->stderr == 0) {
-    process->stderr = kmemfile_create(DEFAULT_STDFILE_SIZE, 0);
+    process->stderr = kmempipe_create(DEFAULT_STDFILE_SIZE, 0);
   }
   
   process->state |= PROC_RUNNING;
@@ -327,18 +328,19 @@ int process_start(Process *process) {
 int process_close(Process *process) {
   LOCK_PROCSYS
 
-  if (process->state & PROC_ZOMBIE) {
-    UNLOCK_PROCSYS
-    return -1;
-  }
-
-  //kill running threads
   LinkNode *node, *next;
-  for (node = process->threads.first; node; node=next) {
-    next = node->next;
-    task_destroy((int)node->data, process->retval, 0);
-    
-    kfree(node);
+  int retval = process->retval;
+  
+  if (process->state & PROC_RUNNING) {
+    klist_remove((List*)&running_processes, process);
+  } else {
+    klist_remove((List*)&finishing_processes, process);
+  }
+  
+  UNLOCK_PROCSYS
+
+  if (process->state & PROC_ZOMBIE) {
+    return -1;
   }
   
   for (node=process->open_files.first; node; node=next) {
@@ -353,19 +355,23 @@ int process_close(Process *process) {
   
   //free any remaining allocated memory
   pfreeall(process);
-  
-  if (process->state & PROC_RUNNING) {
-    klist_remove((List*)&running_processes, process);
-  } else {
-    klist_remove((List*)&finishing_processes, process);
-  }
 
   process->state |= PROC_ZOMBIE;
   process->state &= ~PROC_RUNNING;
   
+  node = process->threads.last;
+  
   free_process(process); //kfree(process);
   
-  UNLOCK_PROCSYS
+  //kill running threads
+  for (; node; node=next) {
+    int tid = (int)node->data;
+
+    next = node->prev;
+    kfree(node);
+    
+    task_destroy(tid, retval, 0);
+  }
   
   return 0;
 }
@@ -486,15 +492,13 @@ FILE *popen(const char *command, const char *mode) {
   return NULL;
 }
 
-extern uintptr_t emergency_proc_exit_stack[];
+void emergency_proc_exit_cb() {
+  _exit(-1);
+}
 
-int _emergency_proc_exit() {
-  Process *p = process_from_pid(k_curtaskp->pid, 1);
-  p->retval = -1;
-  
-  process_close(p);
-  
-  return 0;
+void emergency_proc_exit() {
+  e9printf("preinterrupt eip: %x, esp: %x\n", get_eip(), read_esp());
+  thread_interrupt(k_curtaskp->tid, emergency_proc_exit_cb);
 }
 
 static int proc_stop_task(int argc, char **argv) {
@@ -524,6 +528,7 @@ int _exit(int retval) {
   
   e9printf("ZOMBIE! I SEE A ZOMBIE!\n");
   while (1) {
+    task_yield();
   }
   
   return 0;

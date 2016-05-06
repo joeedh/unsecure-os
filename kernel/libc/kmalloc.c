@@ -248,7 +248,7 @@ int _ktestmem(void *vmem) {
   uintptr_t base = (uintptr_t)vmem;
   
   if (base & 7) {
-    stacktrace(klogf);
+    stacktrace(0, klogf);
     klogf("eek, alignment error! %x\n", vmem);
     return 0;
   }

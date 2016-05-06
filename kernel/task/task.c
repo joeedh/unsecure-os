@@ -200,7 +200,7 @@ void task_destroy(int tid, int retval, int wait_if_inside) {
     interrupts_enable();
     
     //we're in the killed task? wait for task switch
-    if (task == k_curtaskp) { 
+    if (wait_if_inside && task == k_curtaskp) { 
       while (1) {
       }
     }
@@ -230,6 +230,7 @@ void wrapped_main(int argc, char **argv) {
   task_cleanup(data->task, ret);
   
   while (1) {
+    task_yield();
   }
 }
 
@@ -395,6 +396,52 @@ volatile Task *get_next_task_timer() {
   } while (cur != first && i++ < k_totaltasks);
   
   return next;
+}
+
+int _thread_interrupt_proc(int argc, char **argv) {
+  interrupts_disable();
+  
+  e9printf("interrupting thread!\n");
+  thread_interrupt(argc, (void*)argv);
+  e9printf("done.\n");
+  
+  interrupts_enable();
+  return 0;
+}
+
+void *_thread_ctx_push(void *stack);
+
+int thread_interrupt(int tid, void (*func)(void)) {
+  interrupts_disable();
+  Task *task = task_get(tid);
+  
+  if (!task) {
+    interrupts_enable();
+    return -1;
+  }
+  
+  if (task == k_curtaskp) {
+    spawn_task(tid, (void*) func, _thread_interrupt_proc, NULL, (Process*) k_curtaskp->proc);
+    interrupts_enable();
+    task_yield();
+    
+    return 0;
+  }
+  
+  uintptr_t *stack = (uintptr_t*) task->head;
+  uintptr_t eip = stack[11]; //XXX check me!
+  
+  *--stack = eip;
+  *--stack = read_eflags() & ~(1<<9); //exclude interrupt flag
+  *--stack = 0x08;
+  *--stack = (uintptr_t) func;
+  
+  stack = _thread_ctx_push(stack);
+  
+  task->head = stack;
+  
+  interrupts_enable();
+  return 0;
 }
 
 void next_task() {

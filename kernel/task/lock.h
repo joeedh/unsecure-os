@@ -180,7 +180,7 @@ static inline void _klock_lock(Lock *lock DEBUG_ARGS) {
   unsigned int state1 = _lock_safe_entry();
   
   if (lock->state) {
-    stacktrace(e9printf);
+    stacktrace(0, e9printf);
   }
   
   _lock_safe_exit(state1);

@@ -9,6 +9,7 @@ extern e9printf;
 %define GSEL_CODE16 0x28
 %define GSEL_DATA16 0x30
 
+%define _CLGN  ('g' | (10 << 8) | (12<<12))
 %define _CRED  ('r' | (12 << 8) | (12<<12))
 %define _CGRE  ('g' | (9 << 8) | (9<<12))
 
@@ -285,7 +286,7 @@ _start:
 	; continues execution, just to be safe.
 	
   cli;
-  mov [dword 0xB8000], dword _CRED;
+  mov [dword 0xB8000], dword _CLGN ; _CRED
 
 .hang:
 	hlt
@@ -334,10 +335,6 @@ global idt_table_end;
 idt_table_end:
 
 
-;does not account for paging
-;enter_protected_mode:
-;  cli
-  
 
 section .text
 align 8
@@ -350,7 +347,7 @@ global _setIRT
 _setIRT:
   
   cli;
-  mov [dword 0xB8000], dword _CRED;
+  mov [dword 0xB8000], dword _CLGN ; _CRED
 
   
   push ax
@@ -451,7 +448,7 @@ exr_0:
     mfence
     
     
-  mov [dword 0xB8000], dword _CGRE;
+  mov [dword 0xB8000], dword _CGRE
   sti;
 
     iret
@@ -524,7 +521,7 @@ exr_1:
     mfence
     
     
-  mov [dword 0xB8000], dword _CGRE;
+  mov [dword 0xB8000], dword _CGRE
   sti;
 
     iret
@@ -601,7 +598,7 @@ exr_2:
     mfence
     
     
-  mov [dword 0xB8000], dword _CGRE;
+  mov [dword 0xB8000], dword _CGRE
   sti;
 
     iret
@@ -674,7 +671,7 @@ exr_3:
     mfence
     
     
-  mov [dword 0xB8000], dword _CGRE;
+  mov [dword 0xB8000], dword _CGRE
   sti;
 
     iret
@@ -747,7 +744,7 @@ exr_4:
     mfence
     
     
-  mov [dword 0xB8000], dword _CGRE;
+  mov [dword 0xB8000], dword _CGRE
   sti;
 
     iret
@@ -820,7 +817,7 @@ exr_5:
     mfence
     
     
-  mov [dword 0xB8000], dword _CGRE;
+  mov [dword 0xB8000], dword _CGRE
   sti;
 
     iret
@@ -893,7 +890,7 @@ exr_6:
     mfence
     
     
-  mov [dword 0xB8000], dword _CGRE;
+  mov [dword 0xB8000], dword _CGRE
   sti;
 
     iret
@@ -966,7 +963,7 @@ exr_7:
     mfence
     
     
-  mov [dword 0xB8000], dword _CGRE;
+  mov [dword 0xB8000], dword _CGRE
   sti;
 
     iret
@@ -1039,7 +1036,7 @@ exr_8:
     mfence
     
     
-  mov [dword 0xB8000], dword _CGRE;
+  mov [dword 0xB8000], dword _CGRE
   sti;
 
     iret
@@ -1112,7 +1109,7 @@ exr_9:
     mfence
     
     
-  mov [dword 0xB8000], dword _CGRE;
+  mov [dword 0xB8000], dword _CGRE
   sti;
 
     iret
@@ -1185,7 +1182,7 @@ exr_10:
     mfence
     
     
-  mov [dword 0xB8000], dword _CGRE;
+  mov [dword 0xB8000], dword _CGRE
   sti;
 
     iret
@@ -1258,7 +1255,7 @@ exr_11:
     mfence
     
     
-  mov [dword 0xB8000], dword _CGRE;
+  mov [dword 0xB8000], dword _CGRE
   sti;
 
     iret
@@ -1331,7 +1328,7 @@ exr_12:
     mfence
     
     
-  mov [dword 0xB8000], dword _CGRE;
+  mov [dword 0xB8000], dword _CGRE
   sti;
 
     iret
@@ -1404,7 +1401,7 @@ exr_13:
     mfence
     
     
-  mov [dword 0xB8000], dword _CGRE;
+  mov [dword 0xB8000], dword _CGRE
   sti;
 
     iret
@@ -1477,7 +1474,7 @@ exr_14:
     mfence
     
     
-  mov [dword 0xB8000], dword _CGRE;
+  mov [dword 0xB8000], dword _CGRE
   sti;
 
     iret
@@ -1550,7 +1547,7 @@ exr_15:
     mfence
     
     
-  mov [dword 0xB8000], dword _CGRE;
+  mov [dword 0xB8000], dword _CGRE
   sti;
 
     iret
@@ -1623,7 +1620,7 @@ exr_16:
     mfence
     
     
-  mov [dword 0xB8000], dword _CGRE;
+  mov [dword 0xB8000], dword _CGRE
   sti;
 
     iret
@@ -1696,7 +1693,7 @@ exr_17:
     mfence
     
     
-  mov [dword 0xB8000], dword _CGRE;
+  mov [dword 0xB8000], dword _CGRE
   sti;
 
     iret
@@ -1769,7 +1766,7 @@ exr_18:
     mfence
     
     
-  mov [dword 0xB8000], dword _CGRE;
+  mov [dword 0xB8000], dword _CGRE
   sti;
 
     iret
@@ -1831,7 +1828,7 @@ isr_7:
   mfence
   
   
-  mov [dword 0xB8000], dword _CGRE;
+  mov [dword 0xB8000], dword _CGRE
   sti;
 
   iret
@@ -1869,7 +1866,7 @@ isr_15:
   mfence
   
   
-  mov [dword 0xB8000], dword _CGRE;
+  mov [dword 0xB8000], dword _CGRE
   sti;
 
   iret
@@ -1890,7 +1887,7 @@ isr_1 :
   
   
   cli;
-  mov [dword 0xB8000], dword _CRED;
+  mov [dword 0xB8000], dword _CLGN ; _CRED
 
   ;push ebp  ;frame pointer
   ;mov  ebp, esp;
@@ -1916,7 +1913,7 @@ isr_1 :
   mfence
   ;pop ebp  ;frame pointer
   
-  mov [dword 0xB8000], dword _CGRE;
+  mov [dword 0xB8000], dword _CGRE
   sti;
 
   
@@ -1925,7 +1922,7 @@ isr_1 :
   mfence
   
   
-  mov [dword 0xB8000], dword _CGRE;
+  mov [dword 0xB8000], dword _CGRE
   sti;
 
   iret
@@ -1964,7 +1961,7 @@ isr_2 :
   mfence
   
   
-  mov [dword 0xB8000], dword _CGRE;
+  mov [dword 0xB8000], dword _CGRE
   sti;
 
   iret
@@ -2003,7 +2000,7 @@ isr_3 :
   mfence
   
   
-  mov [dword 0xB8000], dword _CGRE;
+  mov [dword 0xB8000], dword _CGRE
   sti;
 
   iret
@@ -2042,7 +2039,7 @@ isr_4 :
   mfence
   
   
-  mov [dword 0xB8000], dword _CGRE;
+  mov [dword 0xB8000], dword _CGRE
   sti;
 
   iret
@@ -2081,7 +2078,7 @@ isr_5 :
   mfence
   
   
-  mov [dword 0xB8000], dword _CGRE;
+  mov [dword 0xB8000], dword _CGRE
   sti;
 
   iret
@@ -2120,7 +2117,7 @@ isr_6 :
   mfence
   
   
-  mov [dword 0xB8000], dword _CGRE;
+  mov [dword 0xB8000], dword _CGRE
   sti;
 
   iret
@@ -2160,7 +2157,7 @@ isr_8 :
   mfence
   
   
-  mov [dword 0xB8000], dword _CGRE;
+  mov [dword 0xB8000], dword _CGRE
   sti;
 
   iret
@@ -2199,7 +2196,7 @@ isr_9 :
   mfence
   
   
-  mov [dword 0xB8000], dword _CGRE;
+  mov [dword 0xB8000], dword _CGRE
   sti;
 
   iret
@@ -2238,7 +2235,7 @@ isr_10:
   mfence
   
   
-  mov [dword 0xB8000], dword _CGRE;
+  mov [dword 0xB8000], dword _CGRE
   sti;
 
   iret
@@ -2277,7 +2274,7 @@ isr_11:
   mfence
   
   
-  mov [dword 0xB8000], dword _CGRE;
+  mov [dword 0xB8000], dword _CGRE
   sti;
 
   iret
@@ -2316,7 +2313,7 @@ isr_12:
   mfence
   
   
-  mov [dword 0xB8000], dword _CGRE;
+  mov [dword 0xB8000], dword _CGRE
   sti;
 
   iret
@@ -2355,7 +2352,7 @@ isr_13:
   mfence
   
   
-  mov [dword 0xB8000], dword _CGRE;
+  mov [dword 0xB8000], dword _CGRE
   sti;
 
   iret
@@ -2394,7 +2391,7 @@ isr_14:
   mfence
   
   
-  mov [dword 0xB8000], dword _CGRE;
+  mov [dword 0xB8000], dword _CGRE
   sti;
 
   iret
@@ -2426,7 +2423,7 @@ global _setGDT_prot2
 _setGDT_prot2:
   
   cli;
-  mov [dword 0xB8000], dword _CRED;
+  mov [dword 0xB8000], dword _CLGN ; _CRED
 
   
   mov eax, thegdt
@@ -2534,11 +2531,8 @@ raw_next_task:
   mov esp, [eax]
   
   
-  ;pop ds;
   popad;
-  ;popa;
   popfd;
-  ;popf;
 
   
   ;save eax
@@ -2571,11 +2565,8 @@ isr_0:
   add dword [kernel_tick], 1
   
   
-  ;pushf;
   pushfd;
-  ;pusha;
   pushad;
-  ;push ds;
 
 
   mov eax, dword [k_curtaskp];
@@ -2603,11 +2594,8 @@ isr_0:
 
   
   
-  ;pop ds;
   popad;
-  ;popa;
   popfd;
-  ;popf;
 
   
   ;save eax
@@ -2645,11 +2633,8 @@ isr_debug_stack_top:
 issr_0:
   cli
   
-  ;pushf;
   pushfd;
-  ;pusha;
   pushad;
-  ;push ds;
 
   
   ;save old stack position
@@ -2679,11 +2664,8 @@ issr_0:
 
   
   
-  ;pop ds;
   popad;
-  ;popa;
   popfd;
-  ;popf;
 
 
   sti
@@ -2693,14 +2675,11 @@ issr_0:
 isr_00:
   
   cli;
-  mov [dword 0xB8000], dword _CRED;
+  mov [dword 0xB8000], dword _CLGN ; _CRED
 
   
-  ;pushf;
   pushfd;
-  ;pusha;
   pushad;
-  ;push ds;
 
   
   ;prevent bad prefetching behaviours
@@ -2742,18 +2721,15 @@ isr_00:
 
   
   
-  ;pop ds;
   popad;
-  ;popa;
   popfd;
-  ;popf;
 
 
   ;prevent bad prefetching behaviours
   mfence
 
   
-  mov [dword 0xB8000], dword _CGRE;
+  mov [dword 0xB8000], dword _CGRE
   sti;
 
   iret
@@ -2769,7 +2745,7 @@ global __initTask3
 __initdTask3: align 8
   
   cli;
-  mov [dword 0xB8000], dword _CRED;
+  mov [dword 0xB8000], dword _CLGN ; _CRED
 ;
   push ebp;
   pushad;
@@ -2787,15 +2763,48 @@ __initdTask3: align 8
   
   ;enable interrupts again
   
-  mov [dword 0xB8000], dword _CGRE;
+  mov [dword 0xB8000], dword _CGRE
   sti;
 ;
   ret;
 
+global _thread_ctx_push
+_thread_ctx_push:
+  push ebp;
+  push ebx;
+  push ecx;
+  
+  mov ebp, esp;
+  
+  mov eax, [esp + DWSIZE]; stack pointer
+  
+  ;save old stack for later
+  mov ecx, esp;
+  
+  ;set new stack pointer
+  mov esp, eax;
+  
+  ;push context, minus far return pointer+seg
+  
+  pushfd;
+  pushad;
+;
+  
+  ;set return value for final new stack in eax
+  mov eax, esp;
+  
+  ;restore original stack pointer
+  mov esp, ecx;
+  
+  pop ecx;
+  pop ebx;
+  pop ebp;
+  ret;
+  
 __initTask3: align 8
   
   cli;
-  mov [dword 0xB8000], dword _CRED;
+  mov [dword 0xB8000], dword _CLGN ; _CRED
 ;
   ;mov ebp, esp
   
@@ -2831,11 +2840,8 @@ __initTask3: align 8
   
   ;thread context
   
-  ;pushf;
   pushfd;
-  ;pusha;
   pushad;
-  ;push ds;
 ;
   
   ;save new task's esp for later use
@@ -2853,7 +2859,7 @@ __initTask3: align 8
   
   ;enable interrupts again
   
-  mov [dword 0xB8000], dword _CGRE;
+  mov [dword 0xB8000], dword _CGRE
   sti;
 ;
   ret;
@@ -2866,7 +2872,7 @@ global task_yield
 task_yield:
   
   cli;
-  mov [dword 0xB8000], dword _CRED;
+  mov [dword 0xB8000], dword _CLGN ; _CRED
 
   
   ;set up irq-compatible far call: eflags, segment, return pointer.
@@ -2885,11 +2891,8 @@ __switchTask:
   ;argument
   
   
-  ;pushf;
   pushfd;
-  ;pusha;
   pushad;
-  ;push ds;
 ;
   
   ;save stack
@@ -2906,14 +2909,11 @@ __switchTask:
   mov esp, [eax];
   
   
-  ;pop ds;
   popad;
-  ;popa;
   popfd;
-  ;popf;
 ;
   
-  mov [dword 0xB8000], dword _CGRE;
+  mov [dword 0xB8000], dword _CGRE
   sti;
 ;
   
@@ -2947,7 +2947,7 @@ set_PIT_count:
 	pushfd
 	
   cli;
-  mov [dword 0xB8000], dword _CRED;
+  mov [dword 0xB8000], dword _CLGN ; _CRED
 
 	out 0x40, al        ; Set low byte of reload value
 	rol ax, 4           ; al = high byte, ah = low byte
@@ -2970,15 +2970,15 @@ __initFPU:
   
 
 global emergency_proc_exit
-emergency_proc_exit:
+_old_emergency_proc_exit:
   cli
   
   ;set up emergency stack
   mov [emergency_proc_exit_stack], esp
   mov esp, [emergency_proc_exit_stack + 4]
   
-  extern _emergency_proc_exit
-  call _emergency_proc_exit
+  ;extern _emergency_proc_exit
+  ;call _emergency_proc_exit
   
   pop esp
   

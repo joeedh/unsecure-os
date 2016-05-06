@@ -1510,6 +1510,7 @@ SudoBIOS:
   mov eax, [handler_table+eax*4]
   xchg eax, [handler] ; restore eax
   jmp DWORD [handler]
+
 align 4
 handler: dd 0
 handler_table:

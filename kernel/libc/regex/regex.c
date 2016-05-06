@@ -35,6 +35,7 @@ unsigned char *token_to_str(int token) {
     _(WHITE_SPACE)
     _(CLASS_NEGATE)
     _(UNICODE_BYTE)
+    _(QUESTION)
     default:
       return token > 0 && token <= 127 ? (unsigned char*)&token : (unsigned char*)"(bad token!)";
   }
@@ -260,6 +261,8 @@ void *_re_node_append(Node *node, Node *child) {
   }
   
   node->children[node->length] = child;
+  child->index = node->length;
+  
   node->length++;
 
   child->parent = node;
@@ -363,7 +366,7 @@ int main(int argc, unsigned char **argv) {
   };
   
   int val=0, stack=0;
-  while (token = regex_yylex(&val, &stack, &l)) {
+  while (token = regex_yylex(&val, &l)) {
     fprintf(stdout, "token: %s, value: %c\n", token_to_str(token), val);
     val = 0;
   }

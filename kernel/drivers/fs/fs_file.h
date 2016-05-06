@@ -11,7 +11,7 @@
 typedef struct FSFile {
   struct FSFile *next, *prev;
   
-  int inode, closed;
+  int inode, closed, refs;
   unsigned char *name;
   unsigned char *path;
   Lock lock;
@@ -37,6 +37,9 @@ void _fs_file_init(FSFile *file);
 void _fs_fsinterface_init(FSInterface *fs);
 int fs_vfs_add(char *prefix, FSInterface *fs, BlockDeviceIF *device);
 int fs_vfs_get(char *path, FSInterface **fs, BlockDeviceIF **device);
+int peof(int fd);
+int fs_ioctl_handle(int fd, intptr_t req, intptr_t arg);
+int fs_clone(int fd);
 
 int bad_fsdev(FSInterface *fs, BlockDeviceIF *device);
 
@@ -45,6 +48,9 @@ extern void filesystem_initialize();
 int read(int fd, void *buf, unsigned int bytes);
 int write(int fd, void *buf, unsigned int bytes);
 int pread(int fd, void *buf, unsigned int bytes, unsigned int off);
+
+int _fs_set_mode(int fd, int mode);
+int _fs_clear_mode(int fd, int mode);
 
 int flush(int fd);
 int pipe(int fds[2]);

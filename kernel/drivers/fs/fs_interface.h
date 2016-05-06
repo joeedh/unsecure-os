@@ -3,6 +3,7 @@
 
 #include "stddef.h"
 #include "stdint.h"
+#include <stdarg.h>
 
 #include "../blockdevice/blockdevice.h"
 #include "../fs/dirent.h"
@@ -39,7 +40,8 @@ enum { //is a bitfield
   O_TRUNC=(1<<15), //erase files on opening
   O_TTY_INIT=(1<<16),
   O_PIPE_MODE=(1<<17),
-  _O_REVERSE=(1<<18)
+  _O_REVERSE=(1<<18),
+  O_NOSEEK=(1<<19)
 };
 
 enum {
@@ -61,6 +63,9 @@ typedef struct FSInterface {
   unsigned int magic;
   char *name;
   
+  int (*setmode)(void *self, BlockDeviceIF *device, int fd, int mode);
+  int (*clearmode)(void *self, BlockDeviceIF *device, int fd, int mode);
+  
   //see ACCESS_*** enum
   int (*accessmode)(void *self, BlockDeviceIF *device);
   int (*open)(void *self, BlockDeviceIF *device, const char *utf8path, int utf8path_size, int oflag);
@@ -74,6 +79,8 @@ typedef struct FSInterface {
   int (*ftruncate)(void *self, BlockDeviceIF *device, int fd, size_t size);
   int (*poll)(void *self, BlockDeviceIF *device, int fd, struct pollfd *pfd, int timeout_ms);
   
+  int (*ioctl)(void *self, BlockDeviceIF *device, int fd, int req, int arg);
+  
   //returns number of bytes written
   int (*pwrite)(void *self, BlockDeviceIF *device, int file, const char *buf, size_t bufsize, size_t fileoff);
   
@@ -83,7 +90,7 @@ typedef struct FSInterface {
   int (*lseek)(void *self, BlockDeviceIF *device, int file, int off, int whence);
   int (*rewind)(void *self, BlockDeviceIF *device, int file);
   int (*tell)(void *self, BlockDeviceIF *device, int file);
-  int (*eof)(void *self, BlockDeviceIF *device, int file);
+  int (*eof)(void *self, BlockDeviceIF *device, int file, size_t off);
   
   int (*flush)(void *self, BlockDeviceIF *device, int file);
   

@@ -50,6 +50,9 @@ struct Process;
 //implemented in core_x86.nasm
 void task_yield();
 
+//schedules a thread interrupt
+int thread_interrupt(int tid, void (*func)(void));
+
 //Task *task_get(int tid);
 void task_destroy(int tid, int retval, int wait_if_inside);
 int spawn_task(int argc, char **argv, int (*main)(int argc, char **argv),

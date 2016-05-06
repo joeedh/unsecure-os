@@ -43,30 +43,31 @@ const Sym *find_symbol(uint32_t addr) {
   return lastsym ? lastsym : &unknown_sym;
 }
 
-void stacktrace(int (*printfcb)(char *fmt, ...)) {
+void stacktrace(uintptr_t base, int (*printfcb)(char *fmt, ...)) {
 #if 1
-  
   unsigned int esp = read_esp(), ebp = read_ebp();
   unsigned int *stack = (unsigned int*)esp;
-  unsigned int addr = get_eip();
+  unsigned int addr = base ? base : (unsigned int) get_eip();
   
+  //align stack to 4 byte boundary
+  if (esp & 3) {
+    esp = 4 - (esp & 3);
+  }
+
+  stack = (unsigned int*)(esp);
+  printfcb("stack: %x %x %x  %x %x %x\n", stack[0], stack[1], stack[2], stack[3], stack[4], stack[5]);
+  //printfcb("addr: %x\n", addr);
+  //printfcb("       %x %x %x  %x %x %x\n", stack[6], stack[7], stack[8], stack[9], stack[10], stack[11]);
+
   if (ebp == 0 || ebp < 700*1024) {
     printfcb("(ebp: %x): Missing frame pointer information (try compiling with debug info enabled, -g)\n", ebp);
     return;
   }
   
-  if (esp & 3) {
-    esp = 4 - (esp & 3);
-  }
+  //align ebp to four byte boundary
   if (ebp & 3) {
     ebp = 4 - (ebp & 3);
   }
-  
-  stack = (unsigned int*)(esp);
-  //printfcb("addr: %x\n", addr);
-  
-  printfcb("stack: %x %x %x  %x %x %x\n", stack[0], stack[1], stack[2], stack[3], stack[4], stack[5]);
-  //printfcb("       %x %x %x  %x %x %x\n", stack[6], stack[7], stack[8], stack[9], stack[10], stack[11]);
   
   unsigned int ebp2 = read_ebp();
   printfcb("esp: %x, ebp: %x, cur ebp: %x\n", esp, ebp, ebp2);

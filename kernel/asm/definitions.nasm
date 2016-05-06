@@ -7,6 +7,7 @@ extern e9printf;
 %define GSEL_CODE16 0x28
 %define GSEL_DATA16 0x30
 
+%define _CLGN  ('g' | (10 << 8) | (12<<12))
 %define _CRED  ('r' | (12 << 8) | (12<<12))
 %define _CGRE  ('g' | (9 << 8) | (9<<12))
 
@@ -26,11 +27,11 @@ extern e9printf;
 
 m4_define(`docli', `
   cli;
-  mov [dword 0xB8000], dword _CRED;
+  mov [dword 0xB8000], dword _CLGN ; _CRED
 ')
 
 m4_define(`dosti', `
-  mov [dword 0xB8000], dword _CGRE;
+  mov [dword 0xB8000], dword _CGRE
   sti;
 ')
 
@@ -136,19 +137,13 @@ m4_define(`clear_nt', `
 ')
 
 m4_define(`ctx_push', `
-  ;pushf;
   pushfd;
-  ;pusha;
   pushad;
-  ;push ds;
 ')
 
 m4_define(`ctx_pop', `
-  ;pop ds;
   popad;
-  ;popa;
   popfd;
-  ;popf;
 ')
 
 m4_define(`irq_entry', `

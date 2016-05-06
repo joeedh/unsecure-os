@@ -21,11 +21,6 @@ nasm kernel/SudoBios/SudoBios.asm -f bin -o install/lib/SudoBios.bin
 ./install-userland.sh
 ./package-tinyext2.sh
 
-echo "generate _tinyext2_fs.c. . ."
-
-python datatoc.py tinyext2.fs _tinyext2_fs _tinyext2_fs.c
-python datatoc.py install/bin/ls _test_elfdata _test_elfdata.c
-
 echo "assemble NASM code. . ."
 ./kernel/asm/build.sh
 
@@ -39,32 +34,15 @@ echo "build kernel. . ."
 
 source ./cflags.sh
 i686-elf-gcc $CFLAGS -std=gnu99 -c -O2 -D__KERNEL_BUILD__ \
-                      _test_elfdata.c _tinyext2_fs.c kernel/syscalls/*.c kernel/loader/*.c \
+                      _test_elfdata.c kernel/syscalls/*.c kernel/loader/*.c \
                       kernel/drivers/pci/*.c \
                       kernel/drivers/blockdevice/*.c kernel/drivers/ext2/*.c kernel/*.c \
                       kernel/drivers/framebuffer/*.c kernel/drivers/vesa/*.c kernel/drivers/fs/*.c \
                       kernel/libc/*.c kernel/task/*.c kernel/drivers/tty/*.c kernel/drivers/procfs/*.c \
-                      kernel/drivers/keyboard/*.c kernel/sharedmem/*.c kernel/dmesg/*.c
+                      kernel/drivers/keyboard/*.c kernel/sharedmem/*.c kernel/dmesg/*.c \
+                      kernel/drivers/hdd/*.c
 
-echo "link kernel. . ."
-i686-elf-gcc -DINIT_SECTION_ASM_OP=.init -fno-omit-frame-pointer -funsigned-char -T linker.ld -o build/kernel.bin core_x86.o timer.o gdt.o kernel_main.o bootinfo.o \
-                                             interrupt_pointers.o interrupts.o fpu.o libk.o list.o task.o process.o\
-                                             SudoBios.o framebuffer.o vesa.o framebuffer_tty.o shm.o shm_file.o\
-                                             kmalloc.o printf.o tty.o keyboard.o memblock.o memory_file.o\
-                                             mempipe.o fs_procfs.o fs_vfstable.o \
-                                             ext2.o blockdevice.o libc.o syscalls.o sprintf.o string.o dmesg.o \
-                                             fprintf.o stdio.o cli.o _test_elfdata.o vfprintf.o \
-                                             pci.o e9printf.o path.o elfloader.o process_management.o \
-                                             tty_file.o vesa_nasm.o fs_file.o symbol_table_gen.o debug.o -ffreestanding -O2 -nostdlib  \
-                                             -lgcc -funsigned-char 
-
-#objcopy --only-keep-debug kernel.bin kernel.sym
-#objcopy --strip-debug kernel.bin
-
-echo "reading symbols..."
-
-python gen_symtable.py
-readelf --debug-dump=decodedline build/kernel.bin > decoded_line_data.debuginfo
+./link.sh
 
 #i686-elf-gcc -fno-asynchronous-unwind-tables -funsigned-char -T linker.ld -o kernel.bin core_x86.o -ffreestanding -O2 -nostdlib  -lgcc -funsigned-char 
 

@@ -132,7 +132,7 @@ static inline int strncpy(const unsigned char *a, const unsigned char *b, size_t
   return i;
 }
 
-static inline int memcpy(void *s1, void *s2, size_t n) {
+static inline int memcpy(const void *s1, const void *s2, size_t n) {
   if (!n)
     return 0;
   
@@ -278,6 +278,10 @@ static unsigned char *strrchr(const unsigned char *str, unsigned int character) 
   
   return last;
 }
+
+#ifndef __KERNEL_BUILD__
+char *strdup(const char *str);
+#endif
 
 int toupper(int c);
 int tolower(int c);

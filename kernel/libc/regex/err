@@ -1,55 +1,12 @@
-cc1: warning: command line option ‘-Wno-pmf-conversions’ is valid for C++/ObjC++ but not for C
-In file included from regex.h:4:0,
-                 from regex_main.c:2:
-reparse.h:67:21: warning: ‘struct lexer’ declared inside parameter list
- int yyparse (struct lexer *lex);
-                     ^
-reparse.h:67:21: warning: its scope is only this definition or declaration, which is probably not what you want
-regex_main.c: In function ‘main’:
-regex_main.c:274:15: warning: passing argument 1 of ‘yyparse’ from incompatible pointer type
-   if (yyparse(&lex)) {
-               ^
-In file included from regex.h:4:0,
-                 from regex_main.c:2:
-reparse.h:67:5: note: expected ‘struct lexer *’ but argument is of type ‘struct lexer *’
- int yyparse (struct lexer *lex);
+regex.c: In function ‘main’:
+regex.c:366:18: error: too many arguments to function ‘regex_yylex’
+   while (token = regex_yylex(&val, &stack, &l)) {
+                  ^
+regex.c:232:5: note: declared here
+ int regex_yylex(YYSTYPE *lvalp, lexer *l) {
      ^
-regex_main.c: At top level:
-cc1: warning: unrecognized command line option "-Wno-incompatible-pointer-types"
-cc1: warning: unrecognized command line option "-Wno-int-conversion"
-cc1: warning: command line option ‘-Wno-pmf-conversions’ is valid for C++/ObjC++ but not for C
-In file included from regex.h:4:0,
-                 from regex.c:6:
-reparse.h:67:21: warning: ‘struct lexer’ declared inside parameter list
- int yyparse (struct lexer *lex);
-                     ^
-reparse.h:67:21: warning: its scope is only this definition or declaration, which is probably not what you want
-cc1: warning: unrecognized command line option "-Wno-incompatible-pointer-types"
-cc1: warning: unrecognized command line option "-Wno-int-conversion"
-cc1: warning: command line option ‘-Wno-pmf-conversions’ is valid for C++/ObjC++ but not for C
-regex.y:17:0: warning: "REGEX_INTERN" redefined
- #define REGEX_INTERN
- ^
-<command-line>:0:0: note: this is the location of the previous definition
-regex.y: In function ‘yyparse’:
-regex.y:42:33: warning: passing argument 2 of ‘_re_make_node’ makes integer from pointer without a cast
- cp : ASCII        {$$ = node(NCHARACTER, $1, "");}
-                                 ^
-regex.y:22:21: note: expected ‘int’ but argument is of type ‘void *’
- extern struct Node *_re_make_node(int type, int value, unsigned char *fmt, ...);
-                     ^
-regex.y:43:33: warning: passing argument 2 of ‘_re_make_node’ makes integer from pointer without a cast
-    | UNICODE_BYTE {$$ = node(NCHARACTER, $1, "");}
-                                 ^
-regex.y:22:21: note: expected ‘int’ but argument is of type ‘void *’
- extern struct Node *_re_make_node(int type, int value, unsigned char *fmt, ...);
-                     ^
-regex.y:45:29: warning: passing argument 2 of ‘_re_make_node’ makes integer from pointer without a cast
- csetlist   : cp           {$$ = node(NCLASS, "nnn", $1, $1, $1);}
-                             ^
-regex.y:22:21: note: expected ‘int’ but argument is of type ‘char *’
- extern struct Node *_re_make_node(int type, int value, unsigned char *fmt, ...);
-                     ^
-regex.y: At top level:
-cc1: warning: unrecognized command line option "-Wno-incompatible-pointer-types"
-cc1: warning: unrecognized command line option "-Wno-int-conversion"
+regex.tab.c: In function ‘yyparse’:
+regex.tab.c:1377:7: warning: implicit declaration of function ‘yyerror’ [-Wimplicit-function-declaration]
+       yyerror (lex, YY_("syntax error"));
+       ^
+gcc: error: regex.o: No such file or directory

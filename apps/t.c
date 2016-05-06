@@ -45,12 +45,19 @@ int test_console() {
 int main(int argc, char **argv) {
   int ret;
   
+  volatile int i = 1;
+  
+  //test divide by zero
+  i /= 0;
+  printf("div by zero result: %d", i);
+  
+  /*
   if (argc > 1) {
     printf("%s\n", argv[1]);
     printf("%d\n", atoi(argv[1]));
   } else {
     printf("%d\n", clock());
-  }
+  }*/
   
   //printf("yay, test!\n");
   //ret = ktesterfunc(11);

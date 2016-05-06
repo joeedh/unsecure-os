@@ -10,7 +10,7 @@ int kputuint(unsigned int n);
 int kputuhex(unsigned int n);
 short getchar_nowait();
 
-void libk_initialize();
+void libc_initialize();
 
 int kprintf(char *fmt,...);
 

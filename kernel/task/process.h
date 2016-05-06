@@ -69,7 +69,7 @@ int process_set_stderr(Process *process, int stderr);
 int process_set_stdin(Process *process, int stdin);
 Process *process_from_pid(intptr_t pid, int skiplocks);
 
-int emergency_proc_exit();
+void emergency_proc_exit();
 
 Process *process_get_current(int skiplocks);
 int process_get_stdin(Process *p);
