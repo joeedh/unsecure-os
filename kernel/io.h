@@ -82,11 +82,14 @@ static inline void farpokeb(uint16_t sel, void* off, uint8_t v)
           "movb %2, %%fs:(%1)\n\t"
           "pop %%fs"
           : : "g"(sel), "r"(off), "r"(v) );
+          
     /* TODO: Should "memory" be in the clobber list here? */
 }
 
 /*
-Read a 8/16/32-bit value at a given memory location using another segment than the default C data segment. Unfortunately there is no constraint for manipulating segment registers directly, so issuing the mov <reg>, <segmentreg> manually is required.
+Read a 8/16/32-bit value at a given memory location using another segment than the default C data segment. 
+Unfortunately there is no constraint for manipulating segment registers directly, so issuing the 
+mov <reg>, <segmentreg> manually is required.
 */
 static inline uint32_t farpeekl(uint16_t sel, void* off)
 {
@@ -147,6 +150,13 @@ static inline unsigned int read_ebx(void)
 {
     unsigned int val;
     asm volatile ( "mov %%ebx, %0" : "=r"(val) );
+    return val;
+}
+
+static inline unsigned int read_edx(void)
+{
+    unsigned int val;
+    asm volatile ( "mov %%edx, %0" : "=r"(val) );
     return val;
 }
 

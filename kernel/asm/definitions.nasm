@@ -1,5 +1,25 @@
 extern e9printf;
 
+%define TTY_BUFFER_ROWS 900
+
+%define MAX_TASKS 32
+
+%define GDT_ENTRIES 32 ;number of gdt entries
+%define PROCESS_SIZE 472 ;size of Process struct
+%define TASK_SIZE 104 ;size of Task struct
+
+%define DWSIZE 4
+%define POINTERSIZE 4
+
+%define VGA_WIDTH 80
+%define VGA_HEIGHT 25
+
+%define BLUE   9   ;vga_light_blue, actually
+%define BLACK  0  
+%define WHITE  15 
+%define RED    4    
+%define GREEN  10 
+
 %define lret db 0xcb
 
 %define GSEL_CODE   0x08
@@ -10,6 +30,21 @@ extern e9printf;
 %define _CLGN  ('g' | (10 << 8) | (12<<12))
 %define _CRED  ('r' | (12 << 8) | (12<<12))
 %define _CGRE  ('g' | (9 << 8) | (9<<12))
+ 
+; debug channels for set_debug_char 
+
+%define DEBUG_ISR00 35
+;00-14 are reserved
+%define DEBUG_ISR14 18
+%define DEBUG_EXC  2
+%define DEBUG_KEY  5
+%define DEBUG_INSIDEIRQ  55
+%define DEBUG_INSIDEEXC  58
+
+m4_define(`reszero', `
+  times $1 db 0
+  ;resb $1
+')
 
 ;get global address table
 ;what does %% do? can I use m4 for this?
@@ -32,35 +67,29 @@ m4_define(`docli', `
 
 m4_define(`dosti', `
   mov [dword 0xB8000], dword _CGRE
-  sti;
+  sti
 ')
 
 m4_define(nconcat, `$1$2')
 
-%define TTY_BUFFER_ROWS 900
-
-%define MAX_TASKS 32
-
-%define GDT_ENTRIES 32 ;number of gdt entries
-%define PROCESS_SIZE 472 ;size of Process struct
-%define TASK_SIZE 56 ;size of Task struct
-
-%define DWSIZE 4
-%define POINTERSIZE 4
-
-%define VGA_WIDTH 80
-%define VGA_HEIGHT 25
-
-m4_define(`reszero', `
-  times $1 db 0
-  ;resb $1
+m4_define(`task_switch_basic', `
+  ctx_push
+  
+  ;save stack
+  mov eax, dword [k_curtaskp]
+  mov dword [eax], esp
+  
+  ;move to next task
+  mov eax, [k_curtaskp]
+  add eax, DWSIZE
+  mov eax, [eax]
+  mov dword [k_curtaskp], eax
+  
+  ;set stack
+  mov esp, [eax]
+  
+  ctx_pop
 ')
-
-%define BLUE   9   ;vga_light_blue, actually
-%define BLACK  0  
-%define WHITE  15 
-%define RED    4    
-%define GREEN  10 
 
 ; Declare constants used for creating a multiboot header.
 ;MBALIGN     equ  1<<0                   ; align loaded modules on page boundaries
@@ -74,6 +103,36 @@ m4_define(`reszero', `
 
 extern terminal_set_debug;
 extern terminal_set_idebug;
+
+;args: column, global variable (inside_irq or inside_exc)
+m4_define(`_display_inside_irq_exc', `
+  ;calculate character to display
+  mov eax, [$2]
+  add eax, 48 ;add ascii of 0 character
+  
+  ;push arguments
+  push dword 10
+  push eax
+  push dword $1
+  
+  call terminal_set_debug
+  
+  ;pop arguments
+  add esp, DWSIZE*3
+')
+
+m4_define(`display_inside_irq_exc', `
+  ;save registers
+  pushad
+  pushfd
+  
+  _display_inside_irq_exc(DEBUG_INSIDEIRQ, inside_irq)
+  _display_inside_irq_exc(DEBUG_INSIDEEXC, inside_exc)
+  
+  ;restore registers
+  popfd
+  popad
+')
 
 m4_define(`set_debug_char', `
   pushad;
@@ -104,15 +163,6 @@ m4_define(`set_debug_int', `
   pop eax
   pop eax
 ')
-
- 
-; debug channels for set_debug_char 
-%define DEBUG_ISR00 35
-;00-14 are reserved
-%define DEBUG_ISR14 18
-
-%define DEBUG_EXC  2
-%define DEBUG_KEY  5
 
 ;clear nested task flag
 m4_define(`clear_nt', `
@@ -147,11 +197,14 @@ m4_define(`ctx_pop', `
 ')
 
 m4_define(`irq_entry', `
+  inc dword [inside_irq]
+  
+  display_inside_irq_exc()
+  
   mfence
   pushad;
   pushfd;
   ;docli;
-  ;inc dword [inside_irq];
   ;dosti;
 ')
 
@@ -159,6 +212,9 @@ m4_define(`irq_iret', `
   popfd;
   popad;
   mfence
+  
+  dec dword [inside_irq]
+  display_inside_irq_exc()
   
   dosti
   iret

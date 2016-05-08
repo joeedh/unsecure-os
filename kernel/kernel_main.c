@@ -23,6 +23,8 @@
 
 #include "task/task.h"
 #include "task/process.h"
+#include "task/signal.h"
+#include "task/signal_intern.h"
 
 #include "SudoBios.h"
 
@@ -166,6 +168,10 @@ void startup_kernel(void *bootinfo1) {
   kprintf("\ninitializing interrupts. . .\n");
   
   interrupts_initialize();
+  
+  e9printf("initializing POSIX signals. . .\n");
+  signal_initialize();
+  
   e9printf("flush pending keyboard data. . .\n");
   keyboard_post_irq_enable();
   io_wait();

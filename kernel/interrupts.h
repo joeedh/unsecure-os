@@ -18,7 +18,7 @@
 
 void interrupts_initialize();
 
-extern volatile unsigned int inside_irq;
+extern volatile int inside_exc, inside_irq;
 
 static inline void debug_check_interrupts() {
   //*

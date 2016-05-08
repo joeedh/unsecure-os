@@ -7,6 +7,12 @@ m4_include(`data.nasm')
 m4_include(`real16.nasm')
 
 section .text
+
+global inside_irq, inside_exc
+align 8
+inside_irq: dd 0
+inside_exc: dd 0
+
 align 8
 
 __k_idtr: 
@@ -40,8 +46,6 @@ _setIRT:
 %define PIC1 0x20
 %define PIC2 0xA0
 
-extern inside_irq;
-
 ;args: [irq_number, pic_number] (pic1 for master, pic2 for slave)
 m4_define(`isr_wrapper', `
   irq_entry
@@ -66,68 +70,187 @@ global _cpu_exception_flag
 _cpu_exception_flag:
 dd 0
 
-global except_depth;
-_except_depth:
-dd 0
+;make exc_has_error table
+align 16
+global exc_has_error
 
-;takes two arguments
+;see page 2186 of intel docs
+exc_has_error:
+dd 0  ;0
+dd 0  ;1
+dd 0  ;2
+dd 0  ;3
+dd 0  ;4
+dd 0  ;5
+dd 0  ;6
+dd 0  ;7
+dd 1  ;8
+dd 0  ;9
+dd 1  ;10
+dd 1  ;11
+dd 1  ;12
+dd 1  ;13
+dd 1  ;14
+dd 0  ;15
+dd 0  ;16
+dd 1  ;17
+dd 0  ;18
+dd 0  ;19
+dd 0  ;20
+reszero(DWSIZE*12);
+
+;saves state in ctx_push-compatible order
+m4_define(`load_exc_state', `
+  mov eax, [k_curtaskp]
+  add eax, 56
+  
+  mov ecx, [eax+DWSIZE*7]
+  mov edx, [eax+DWSIZE*6]
+  mov ebx, [eax+DWSIZE*5]
+  
+  mov ebp, [eax+DWSIZE*3]
+  mov esi, [eax+DWSIZE*2]
+  mov edi, [eax+DWSIZE*1]
+  
+  ;load eflags
+  push dword [eax]
+  popfd
+  
+  ;skip esp
+  ;mov esp, [eax+DWSIZE*4]
+  
+  ;do eax
+  mov eax, [eax + DWSIZE*8]
+');
+
+extern _on_exception;
+global _exception_resume
+
+;args: new eip, new esp
+_exception_resume:
+  cli
+  
+  ;save eip
+  mov eax, [esp+DWSIZE]
+  mfence;
+  
+  ;switch to new stack
+  mov esp, [esp+DWSIZE*2]
+  mfence;
+  
+  push eax
+  mfence
+  
+  load_exc_state()
+  mfence
+  
+  sti
+  ret
+  
+  ;push new eip as return pointer
+  ;call .get_eip
+  ;.get_eip:
+  ;  ;lea dword [esp], eax
+  ;  mov [esp], eax
+  ;  mfence
+  ;  ret
+
+__on_exception:
+  push ecx
+  push ebx
+  push eax
+  
+  call _on_exception
+  
+;saves state in ctx_push-compatible order
+m4_define(`save_exc_state', `
+  push eax
+  
+  mov eax, [k_curtaskp]
+  add eax, 56
+  
+  mov [eax+DWSIZE*7], ecx
+  mov [eax+DWSIZE*6], edx
+  mov [eax+DWSIZE*5], ebx
+  
+  mov [eax+DWSIZE*4], esp
+  add dword [eax+DWSIZE*4], DWSIZE*6 ;stack should be: eax, return addr, cs (0x08), eflags
+  
+  mov [eax+DWSIZE*3], ebp
+  mov [eax+DWSIZE*2], esi
+  mov [eax+DWSIZE*1], edi
+  
+  ;save eax
+  pop ebx
+  mov [eax+DWSIZE*8], ebx
+  
+  ;save eflags
+  pushfd
+  pop ebx
+  or ebx, 1<<9 ;ensure interrupt are enabled
+  
+  mov [eax], ebx
+');
+
+;macro takes two arguments
+;exception handler, modifies stack so as to jump to the real handler after iret
 m4_define(`exc_wrapper', `
   align 8;
   
-  mfence
+  save_exc_state()
+  
+  inc dword [inside_exc]
+  display_inside_irq_exc()
   
   ;deal with stack frame pointer
-  push ebp 
-  mov ebp, esp;
+  mfence
+  push ebp
+  mov ebp, esp
+  mfence
   
-  pushad;
-  pushfd;
+  ;make sure code value argument to handler defaults to 0
+  mov ebx, 0
   
-  ;set_debug_char(DEBUG_EXC, 69, RED)
-  ;set_debug_int(DEBUG_EXC, 5, $1, RED)
+  ;check if theres an error code on the stack
+  ;mov eax, exc_has_error
+  ;add eax, $1*DWSIZE
+  ;mov eax, dword [eax]
+  ;test eax, 1
   
-  cld
+  ;no error code?
+  ;jnz .next
+
+  ;get error code
+  ;mov edx, [esp+DWSIZE]
+  ;add ebp, DWSIZE
   
-  inc dword [_except_depth];
+  ;.next:
   
-  mov eax, $1;
+  ;update eip in cpudata structure
+  mov ecx, [k_curtaskp]
+  add ecx, 56+DWSIZE*9 ;add offset to eip pointer
+  mov eax, dword [ebp + DWSIZE]
+  mov dword [ecx], eax
   
-  push ebp;
-  push dword [ebp + DWSIZE];
-  push dword [ebp];
-  push eax;
+  ;arguments to __on_exception are stored in eax, ebx, ecx
   
+  ;store code
+  mov eax,  $1
+  
+  ;store pointer to cpuid structure
+  mov ecx, [k_curtaskp]
+  add ecx, 56
+  
+  ;change long-return address
+  mov dword [ebp + DWSIZE], __on_exception
+
   ;clear exceptions
-  fclex;
+  fclex
   
-  extern nconcat(_exc_handler, $1);
-  mov ebx, .aftercall
-  call nconcat(_exc_handler, $1);
-  .aftercall:
-  
-  pop eax;
-  add esp, DWSIZE*3;
+  pop ebp
 
-  dec dword [_except_depth];
-  jz .cleardebug;
-
-  .back:
-    popfd;
-    popad;
-    
-    fclex;
-    
-    ;pop saved frame pointer
-    pop ebp
-    
-    mfence
-    
-    dosti
-    iret
-  
-  .cleardebug:
-    set_debug_char(DEBUG_EXC, 101, BLACK)
-    jmp .back
+  dec dword [inside_exc]
+  iret
 ')
 
 global exr_0, exr_1, exr_2, exr_3, exr_4, exr_5;
@@ -427,6 +550,8 @@ raw_next_task:
   
 isr_0:
 ;  isr0_debug_stack()
+  inc dword [inside_irq]
+  display_inside_irq_exc()
   
   ;increment tick counter
   extern kernel_tick;
@@ -434,6 +559,7 @@ isr_0:
   
   ctx_push()
 
+  ;save stack
   mov eax, dword [k_curtaskp];
   mov dword [eax], esp;
   
@@ -442,6 +568,7 @@ isr_0:
   add eax, DWSIZE;
   mov eax, [eax];
   mov dword [k_curtaskp], eax
+  
   mov esp, [eax];
   
   ;set_debug_char(DEBUG_ISR00, 105, GREEN)
@@ -454,6 +581,9 @@ isr_0:
   
   ctx_pop()
   clear_nt()
+  
+  dec dword [inside_irq]
+  display_inside_irq_exc()
   
   sti
   fclex
@@ -574,7 +704,7 @@ _thread_ctx_push:
   
   mov ebp, esp;
   
-  mov eax, [esp + DWSIZE]; stack pointer
+  mov eax, [ebp + DWSIZE]; stack pointer
   
   ;save old stack for later
   mov ecx, esp;
@@ -621,7 +751,7 @@ __initTask3: align 8
   ;eflags, required by interrupt handler
   pushfd
   
-  ;mask out interrupt flag
+  ;ensure interrupts are enabled in eflags
   mov eax, [esp]
   or eax, (1<<9)
   mov [esp], eax;
@@ -658,6 +788,12 @@ global task_yield
 task_yield:
   docli
   
+  ;check if we're inside an irq or exception handler
+  ;mov eax, 0
+  ;add eax, dword [inside_irq]
+  ;add eax, dword [inside_exc]
+  ;jnz .inside_irq_exc
+  
   ;set up irq-compatible far call: eflags, segment, return pointer.
   pushfd
   
@@ -668,27 +804,18 @@ task_yield:
   
   call 0x08:__switchTask
   ret
-  
+    
+  .inside_irq_exc:
+    ;do nothing
+    
+    ret
+    
 ;dw __switchTask, seg __switchTask
 __switchTask:
   ;argument
   
-  ctx_push;
+  task_switch_basic
   
-  ;save stack
-  mov eax, dword [k_curtaskp];
-  mov dword [eax], esp;
-  
-  ;move to next task
-  mov eax, [k_curtaskp]
-  add eax, DWSIZE;
-  mov eax, [eax];
-  mov dword [k_curtaskp], eax
-  
-  ;set stack
-  mov esp, [eax];
-  
-  ctx_pop;
   dosti;
   
   ;emulate IRQ far return, which pops

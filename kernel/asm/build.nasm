@@ -2,6 +2,26 @@
 
 extern e9printf;
 
+%define TTY_BUFFER_ROWS 900
+
+%define MAX_TASKS 32
+
+%define GDT_ENTRIES 32 ;number of gdt entries
+%define PROCESS_SIZE 472 ;size of Process struct
+%define TASK_SIZE 104 ;size of Task struct
+
+%define DWSIZE 4
+%define POINTERSIZE 4
+
+%define VGA_WIDTH 80
+%define VGA_HEIGHT 25
+
+%define BLUE   9   ;vga_light_blue, actually
+%define BLACK  0  
+%define WHITE  15 
+%define RED    4    
+%define GREEN  10 
+
 %define lret db 0xcb
 
 %define GSEL_CODE   0x08
@@ -12,6 +32,18 @@ extern e9printf;
 %define _CLGN  ('g' | (10 << 8) | (12<<12))
 %define _CRED  ('r' | (12 << 8) | (12<<12))
 %define _CGRE  ('g' | (9 << 8) | (9<<12))
+ 
+; debug channels for set_debug_char 
+
+%define DEBUG_ISR00 35
+;00-14 are reserved
+%define DEBUG_ISR14 18
+%define DEBUG_EXC  2
+%define DEBUG_KEY  5
+%define DEBUG_INSIDEIRQ  55
+%define DEBUG_INSIDEEXC  58
+
+
 
 ;get global address table
 ;what does %% do? can I use m4 for this?
@@ -33,27 +65,7 @@ extern e9printf;
 
 
 
-%define TTY_BUFFER_ROWS 900
 
-%define MAX_TASKS 32
-
-%define GDT_ENTRIES 32 ;number of gdt entries
-%define PROCESS_SIZE 472 ;size of Process struct
-%define TASK_SIZE 56 ;size of Task struct
-
-%define DWSIZE 4
-%define POINTERSIZE 4
-
-%define VGA_WIDTH 80
-%define VGA_HEIGHT 25
-
-
-
-%define BLUE   9   ;vga_light_blue, actually
-%define BLACK  0  
-%define WHITE  15 
-%define RED    4    
-%define GREEN  10 
 
 ; Declare constants used for creating a multiboot header.
 ;MBALIGN     equ  1<<0                   ; align loaded modules on page boundaries
@@ -68,20 +80,16 @@ extern e9printf;
 extern terminal_set_debug;
 extern terminal_set_idebug;
 
+;args: column, global variable (inside_irq or inside_exc)
+
+
+
+
 
 
 extern terminal_set_idebug;
 
 
-
- 
-; debug channels for set_debug_char 
-%define DEBUG_ISR00 35
-;00-14 are reserved
-%define DEBUG_ISR14 18
-
-%define DEBUG_EXC  2
-%define DEBUG_KEY  5
 
 ;clear nested task flag
 
@@ -337,6 +345,12 @@ idt_table_end:
 
 
 section .text
+
+global inside_irq, inside_exc
+align 8
+inside_irq: dd 0
+inside_exc: dd 0
+
 align 8
 
 __k_idtr: 
@@ -373,8 +387,6 @@ _setIRT:
 %define PIC1 0x20
 %define PIC2 0xA0
 
-extern inside_irq;
-
 ;args: [irq_number, pic_number] (pic1 for master, pic2 for slave)
 
 
@@ -384,11 +396,106 @@ global _cpu_exception_flag
 _cpu_exception_flag:
 dd 0
 
-global except_depth;
-_except_depth:
-dd 0
+;make exc_has_error table
+align 16
+global exc_has_error
 
-;takes two arguments
+;see page 2186 of intel docs
+exc_has_error:
+dd 0  ;0
+dd 0  ;1
+dd 0  ;2
+dd 0  ;3
+dd 0  ;4
+dd 0  ;5
+dd 0  ;6
+dd 0  ;7
+dd 1  ;8
+dd 0  ;9
+dd 1  ;10
+dd 1  ;11
+dd 1  ;12
+dd 1  ;13
+dd 1  ;14
+dd 0  ;15
+dd 0  ;16
+dd 1  ;17
+dd 0  ;18
+dd 0  ;19
+dd 0  ;20
+
+  times DWSIZE*12 db 0
+  ;resb DWSIZE*12
+;
+
+;saves state in ctx_push-compatible order
+;
+
+extern _on_exception;
+global _exception_resume
+
+;args: new eip, new esp
+_exception_resume:
+  cli
+  
+  ;save eip
+  mov eax, [esp+DWSIZE]
+  mfence;
+  
+  ;switch to new stack
+  mov esp, [esp+DWSIZE*2]
+  mfence;
+  
+  push eax
+  mfence
+  
+  
+  mov eax, [k_curtaskp]
+  add eax, 56
+  
+  mov ecx, [eax+DWSIZE*7]
+  mov edx, [eax+DWSIZE*6]
+  mov ebx, [eax+DWSIZE*5]
+  
+  mov ebp, [eax+DWSIZE*3]
+  mov esi, [eax+DWSIZE*2]
+  mov edi, [eax+DWSIZE*1]
+  
+  ;load eflags
+  push dword [eax]
+  popfd
+  
+  ;skip esp
+  ;mov esp, [eax+DWSIZE*4]
+  
+  ;do eax
+  mov eax, [eax + DWSIZE*8]
+
+  mfence
+  
+  sti
+  ret
+  
+  ;push new eip as return pointer
+  ;call .get_eip
+  ;.get_eip:
+  ;  ;lea dword [esp], eax
+  ;  mov [esp], eax
+  ;  mfence
+  ;  ret
+
+__on_exception:
+  push ecx
+  push ebx
+  push eax
+  
+  call _on_exception
+  
+;saves state in ctx_push-compatible order
+;
+
+;macro takes two arguments
+;exception handler, modifies stack so as to jump to the real handler after iret
 
 
 global exr_0, exr_1, exr_2, exr_3, exr_4, exr_5;
@@ -399,148 +506,250 @@ align 8
 exr_0: 
   align 8;
   
-  mfence
+  
+  push eax
+  
+  mov eax, [k_curtaskp]
+  add eax, 56
+  
+  mov [eax+DWSIZE*7], ecx
+  mov [eax+DWSIZE*6], edx
+  mov [eax+DWSIZE*5], ebx
+  
+  mov [eax+DWSIZE*4], esp
+  add dword [eax+DWSIZE*4], DWSIZE*6 ;stack should be: eax, return addr, cs (0x08), eflags
+  
+  mov [eax+DWSIZE*3], ebp
+  mov [eax+DWSIZE*2], esi
+  mov [eax+DWSIZE*1], edi
+  
+  ;save eax
+  pop ebx
+  mov [eax+DWSIZE*8], ebx
+  
+  ;save eflags
+  pushfd
+  pop ebx
+  or ebx, 1<<9 ;ensure interrupt are enabled
+  
+  mov [eax], ebx
+
+  
+  inc dword [inside_exc]
+  
+  ;save registers
+  pushad
+  pushfd
+  
+  
+  ;calculate character to display
+  mov eax, [inside_irq]
+  add eax, 48 ;add ascii of 0 character
+  
+  ;push arguments
+  push dword 10
+  push eax
+  push dword DEBUG_INSIDEIRQ
+  
+  call terminal_set_debug
+  
+  ;pop arguments
+  add esp, DWSIZE*3
+
+  
+  ;calculate character to display
+  mov eax, [inside_exc]
+  add eax, 48 ;add ascii of 0 character
+  
+  ;push arguments
+  push dword 10
+  push eax
+  push dword DEBUG_INSIDEEXC
+  
+  call terminal_set_debug
+  
+  ;pop arguments
+  add esp, DWSIZE*3
+
+  
+  ;restore registers
+  popfd
+  popad
+
   
   ;deal with stack frame pointer
-  push ebp 
-  mov ebp, esp;
+  mfence
+  push ebp
+  mov ebp, esp
+  mfence
   
-  pushad;
-  pushfd;
+  ;make sure code value argument to handler defaults to 0
+  mov ebx, 0
   
-  ;set_debug_char(DEBUG_EXC, 69, RED)
-  ;set_debug_int(DEBUG_EXC, 5, 0, RED)
+  ;check if theres an error code on the stack
+  ;mov eax, exc_has_error
+  ;add eax, 0*DWSIZE
+  ;mov eax, dword [eax]
+  ;test eax, 1
   
-  cld
+  ;no error code?
+  ;jnz .next
+
+  ;get error code
+  ;mov edx, [esp+DWSIZE]
+  ;add ebp, DWSIZE
   
-  inc dword [_except_depth];
+  ;.next:
   
-  mov eax, 0;
+  ;update eip in cpudata structure
+  mov ecx, [k_curtaskp]
+  add ecx, 56+DWSIZE*9 ;add offset to eip pointer
+  mov eax, dword [ebp + DWSIZE]
+  mov dword [ecx], eax
   
-  push ebp;
-  push dword [ebp + DWSIZE];
-  push dword [ebp];
-  push eax;
+  ;arguments to __on_exception are stored in eax, ebx, ecx
   
+  ;store code
+  mov eax,  0
+  
+  ;store pointer to cpuid structure
+  mov ecx, [k_curtaskp]
+  add ecx, 56
+  
+  ;change long-return address
+  mov dword [ebp + DWSIZE], __on_exception
+
   ;clear exceptions
-  fclex;
+  fclex
   
-  extern _exc_handler0;
-  mov ebx, .aftercall
-  call _exc_handler0;
-  .aftercall:
-  
-  pop eax;
-  add esp, DWSIZE*3;
+  pop ebp
 
-  dec dword [_except_depth];
-  jz .cleardebug;
-
-  .back:
-    popfd;
-    popad;
-    
-    fclex;
-    
-    ;pop saved frame pointer
-    pop ebp
-    
-    mfence
-    
-    
-  mov [dword 0xB8000], dword _CGRE
-  sti;
-
-    iret
-  
-  .cleardebug:
-    
-  pushad;
-  
-  push dword BLACK
-  push dword 101
-  push dword DEBUG_EXC
-  call terminal_set_debug
-  pop eax;
-  pop eax;
-  pop eax;
-  
-  popad;
-
-    jmp .back
+  dec dword [inside_exc]
+  iret
 
 exr_1: 
   align 8;
   
-  mfence
+  
+  push eax
+  
+  mov eax, [k_curtaskp]
+  add eax, 56
+  
+  mov [eax+DWSIZE*7], ecx
+  mov [eax+DWSIZE*6], edx
+  mov [eax+DWSIZE*5], ebx
+  
+  mov [eax+DWSIZE*4], esp
+  add dword [eax+DWSIZE*4], DWSIZE*6 ;stack should be: eax, return addr, cs (0x08), eflags
+  
+  mov [eax+DWSIZE*3], ebp
+  mov [eax+DWSIZE*2], esi
+  mov [eax+DWSIZE*1], edi
+  
+  ;save eax
+  pop ebx
+  mov [eax+DWSIZE*8], ebx
+  
+  ;save eflags
+  pushfd
+  pop ebx
+  or ebx, 1<<9 ;ensure interrupt are enabled
+  
+  mov [eax], ebx
+
+  
+  inc dword [inside_exc]
+  
+  ;save registers
+  pushad
+  pushfd
+  
+  
+  ;calculate character to display
+  mov eax, [inside_irq]
+  add eax, 48 ;add ascii of 0 character
+  
+  ;push arguments
+  push dword 10
+  push eax
+  push dword DEBUG_INSIDEIRQ
+  
+  call terminal_set_debug
+  
+  ;pop arguments
+  add esp, DWSIZE*3
+
+  
+  ;calculate character to display
+  mov eax, [inside_exc]
+  add eax, 48 ;add ascii of 0 character
+  
+  ;push arguments
+  push dword 10
+  push eax
+  push dword DEBUG_INSIDEEXC
+  
+  call terminal_set_debug
+  
+  ;pop arguments
+  add esp, DWSIZE*3
+
+  
+  ;restore registers
+  popfd
+  popad
+
   
   ;deal with stack frame pointer
-  push ebp 
-  mov ebp, esp;
+  mfence
+  push ebp
+  mov ebp, esp
+  mfence
   
-  pushad;
-  pushfd;
+  ;make sure code value argument to handler defaults to 0
+  mov ebx, 0
   
-  ;set_debug_char(DEBUG_EXC, 69, RED)
-  ;set_debug_int(DEBUG_EXC, 5, 1, RED)
+  ;check if theres an error code on the stack
+  ;mov eax, exc_has_error
+  ;add eax, 1*DWSIZE
+  ;mov eax, dword [eax]
+  ;test eax, 1
   
-  cld
+  ;no error code?
+  ;jnz .next
+
+  ;get error code
+  ;mov edx, [esp+DWSIZE]
+  ;add ebp, DWSIZE
   
-  inc dword [_except_depth];
+  ;.next:
   
-  mov eax, 1;
+  ;update eip in cpudata structure
+  mov ecx, [k_curtaskp]
+  add ecx, 56+DWSIZE*9 ;add offset to eip pointer
+  mov eax, dword [ebp + DWSIZE]
+  mov dword [ecx], eax
   
-  push ebp;
-  push dword [ebp + DWSIZE];
-  push dword [ebp];
-  push eax;
+  ;arguments to __on_exception are stored in eax, ebx, ecx
   
+  ;store code
+  mov eax,  1
+  
+  ;store pointer to cpuid structure
+  mov ecx, [k_curtaskp]
+  add ecx, 56
+  
+  ;change long-return address
+  mov dword [ebp + DWSIZE], __on_exception
+
   ;clear exceptions
-  fclex;
+  fclex
   
-  extern _exc_handler1;
-  mov ebx, .aftercall
-  call _exc_handler1;
-  .aftercall:
-  
-  pop eax;
-  add esp, DWSIZE*3;
+  pop ebp
 
-  dec dword [_except_depth];
-  jz .cleardebug;
-
-  .back:
-    popfd;
-    popad;
-    
-    fclex;
-    
-    ;pop saved frame pointer
-    pop ebp
-    
-    mfence
-    
-    
-  mov [dword 0xB8000], dword _CGRE
-  sti;
-
-    iret
-  
-  .cleardebug:
-    
-  pushad;
-  
-  push dword BLACK
-  push dword 101
-  push dword DEBUG_EXC
-  call terminal_set_debug
-  pop eax;
-  pop eax;
-  pop eax;
-  
-  popad;
-
-    jmp .back
+  dec dword [inside_exc]
+  iret
 
 
 ;exr_1: ;special debug exception
@@ -549,1243 +758,2110 @@ exr_1:
 exr_2: 
   align 8;
   
-  mfence
+  
+  push eax
+  
+  mov eax, [k_curtaskp]
+  add eax, 56
+  
+  mov [eax+DWSIZE*7], ecx
+  mov [eax+DWSIZE*6], edx
+  mov [eax+DWSIZE*5], ebx
+  
+  mov [eax+DWSIZE*4], esp
+  add dword [eax+DWSIZE*4], DWSIZE*6 ;stack should be: eax, return addr, cs (0x08), eflags
+  
+  mov [eax+DWSIZE*3], ebp
+  mov [eax+DWSIZE*2], esi
+  mov [eax+DWSIZE*1], edi
+  
+  ;save eax
+  pop ebx
+  mov [eax+DWSIZE*8], ebx
+  
+  ;save eflags
+  pushfd
+  pop ebx
+  or ebx, 1<<9 ;ensure interrupt are enabled
+  
+  mov [eax], ebx
+
+  
+  inc dword [inside_exc]
+  
+  ;save registers
+  pushad
+  pushfd
+  
+  
+  ;calculate character to display
+  mov eax, [inside_irq]
+  add eax, 48 ;add ascii of 0 character
+  
+  ;push arguments
+  push dword 10
+  push eax
+  push dword DEBUG_INSIDEIRQ
+  
+  call terminal_set_debug
+  
+  ;pop arguments
+  add esp, DWSIZE*3
+
+  
+  ;calculate character to display
+  mov eax, [inside_exc]
+  add eax, 48 ;add ascii of 0 character
+  
+  ;push arguments
+  push dword 10
+  push eax
+  push dword DEBUG_INSIDEEXC
+  
+  call terminal_set_debug
+  
+  ;pop arguments
+  add esp, DWSIZE*3
+
+  
+  ;restore registers
+  popfd
+  popad
+
   
   ;deal with stack frame pointer
-  push ebp 
-  mov ebp, esp;
+  mfence
+  push ebp
+  mov ebp, esp
+  mfence
   
-  pushad;
-  pushfd;
+  ;make sure code value argument to handler defaults to 0
+  mov ebx, 0
   
-  ;set_debug_char(DEBUG_EXC, 69, RED)
-  ;set_debug_int(DEBUG_EXC, 5, 2, RED)
+  ;check if theres an error code on the stack
+  ;mov eax, exc_has_error
+  ;add eax, 2*DWSIZE
+  ;mov eax, dword [eax]
+  ;test eax, 1
   
-  cld
+  ;no error code?
+  ;jnz .next
+
+  ;get error code
+  ;mov edx, [esp+DWSIZE]
+  ;add ebp, DWSIZE
   
-  inc dword [_except_depth];
+  ;.next:
   
-  mov eax, 2;
+  ;update eip in cpudata structure
+  mov ecx, [k_curtaskp]
+  add ecx, 56+DWSIZE*9 ;add offset to eip pointer
+  mov eax, dword [ebp + DWSIZE]
+  mov dword [ecx], eax
   
-  push ebp;
-  push dword [ebp + DWSIZE];
-  push dword [ebp];
-  push eax;
+  ;arguments to __on_exception are stored in eax, ebx, ecx
   
+  ;store code
+  mov eax,  2
+  
+  ;store pointer to cpuid structure
+  mov ecx, [k_curtaskp]
+  add ecx, 56
+  
+  ;change long-return address
+  mov dword [ebp + DWSIZE], __on_exception
+
   ;clear exceptions
-  fclex;
+  fclex
   
-  extern _exc_handler2;
-  mov ebx, .aftercall
-  call _exc_handler2;
-  .aftercall:
-  
-  pop eax;
-  add esp, DWSIZE*3;
+  pop ebp
 
-  dec dword [_except_depth];
-  jz .cleardebug;
-
-  .back:
-    popfd;
-    popad;
-    
-    fclex;
-    
-    ;pop saved frame pointer
-    pop ebp
-    
-    mfence
-    
-    
-  mov [dword 0xB8000], dword _CGRE
-  sti;
-
-    iret
-  
-  .cleardebug:
-    
-  pushad;
-  
-  push dword BLACK
-  push dword 101
-  push dword DEBUG_EXC
-  call terminal_set_debug
-  pop eax;
-  pop eax;
-  pop eax;
-  
-  popad;
-
-    jmp .back
+  dec dword [inside_exc]
+  iret
 
 exr_3: 
   align 8;
   
-  mfence
+  
+  push eax
+  
+  mov eax, [k_curtaskp]
+  add eax, 56
+  
+  mov [eax+DWSIZE*7], ecx
+  mov [eax+DWSIZE*6], edx
+  mov [eax+DWSIZE*5], ebx
+  
+  mov [eax+DWSIZE*4], esp
+  add dword [eax+DWSIZE*4], DWSIZE*6 ;stack should be: eax, return addr, cs (0x08), eflags
+  
+  mov [eax+DWSIZE*3], ebp
+  mov [eax+DWSIZE*2], esi
+  mov [eax+DWSIZE*1], edi
+  
+  ;save eax
+  pop ebx
+  mov [eax+DWSIZE*8], ebx
+  
+  ;save eflags
+  pushfd
+  pop ebx
+  or ebx, 1<<9 ;ensure interrupt are enabled
+  
+  mov [eax], ebx
+
+  
+  inc dword [inside_exc]
+  
+  ;save registers
+  pushad
+  pushfd
+  
+  
+  ;calculate character to display
+  mov eax, [inside_irq]
+  add eax, 48 ;add ascii of 0 character
+  
+  ;push arguments
+  push dword 10
+  push eax
+  push dword DEBUG_INSIDEIRQ
+  
+  call terminal_set_debug
+  
+  ;pop arguments
+  add esp, DWSIZE*3
+
+  
+  ;calculate character to display
+  mov eax, [inside_exc]
+  add eax, 48 ;add ascii of 0 character
+  
+  ;push arguments
+  push dword 10
+  push eax
+  push dword DEBUG_INSIDEEXC
+  
+  call terminal_set_debug
+  
+  ;pop arguments
+  add esp, DWSIZE*3
+
+  
+  ;restore registers
+  popfd
+  popad
+
   
   ;deal with stack frame pointer
-  push ebp 
-  mov ebp, esp;
+  mfence
+  push ebp
+  mov ebp, esp
+  mfence
   
-  pushad;
-  pushfd;
+  ;make sure code value argument to handler defaults to 0
+  mov ebx, 0
   
-  ;set_debug_char(DEBUG_EXC, 69, RED)
-  ;set_debug_int(DEBUG_EXC, 5, 3, RED)
+  ;check if theres an error code on the stack
+  ;mov eax, exc_has_error
+  ;add eax, 3*DWSIZE
+  ;mov eax, dword [eax]
+  ;test eax, 1
   
-  cld
+  ;no error code?
+  ;jnz .next
+
+  ;get error code
+  ;mov edx, [esp+DWSIZE]
+  ;add ebp, DWSIZE
   
-  inc dword [_except_depth];
+  ;.next:
   
-  mov eax, 3;
+  ;update eip in cpudata structure
+  mov ecx, [k_curtaskp]
+  add ecx, 56+DWSIZE*9 ;add offset to eip pointer
+  mov eax, dword [ebp + DWSIZE]
+  mov dword [ecx], eax
   
-  push ebp;
-  push dword [ebp + DWSIZE];
-  push dword [ebp];
-  push eax;
+  ;arguments to __on_exception are stored in eax, ebx, ecx
   
+  ;store code
+  mov eax,  3
+  
+  ;store pointer to cpuid structure
+  mov ecx, [k_curtaskp]
+  add ecx, 56
+  
+  ;change long-return address
+  mov dword [ebp + DWSIZE], __on_exception
+
   ;clear exceptions
-  fclex;
+  fclex
   
-  extern _exc_handler3;
-  mov ebx, .aftercall
-  call _exc_handler3;
-  .aftercall:
-  
-  pop eax;
-  add esp, DWSIZE*3;
+  pop ebp
 
-  dec dword [_except_depth];
-  jz .cleardebug;
-
-  .back:
-    popfd;
-    popad;
-    
-    fclex;
-    
-    ;pop saved frame pointer
-    pop ebp
-    
-    mfence
-    
-    
-  mov [dword 0xB8000], dword _CGRE
-  sti;
-
-    iret
-  
-  .cleardebug:
-    
-  pushad;
-  
-  push dword BLACK
-  push dword 101
-  push dword DEBUG_EXC
-  call terminal_set_debug
-  pop eax;
-  pop eax;
-  pop eax;
-  
-  popad;
-
-    jmp .back
+  dec dword [inside_exc]
+  iret
 
 exr_4: 
   align 8;
   
-  mfence
+  
+  push eax
+  
+  mov eax, [k_curtaskp]
+  add eax, 56
+  
+  mov [eax+DWSIZE*7], ecx
+  mov [eax+DWSIZE*6], edx
+  mov [eax+DWSIZE*5], ebx
+  
+  mov [eax+DWSIZE*4], esp
+  add dword [eax+DWSIZE*4], DWSIZE*6 ;stack should be: eax, return addr, cs (0x08), eflags
+  
+  mov [eax+DWSIZE*3], ebp
+  mov [eax+DWSIZE*2], esi
+  mov [eax+DWSIZE*1], edi
+  
+  ;save eax
+  pop ebx
+  mov [eax+DWSIZE*8], ebx
+  
+  ;save eflags
+  pushfd
+  pop ebx
+  or ebx, 1<<9 ;ensure interrupt are enabled
+  
+  mov [eax], ebx
+
+  
+  inc dword [inside_exc]
+  
+  ;save registers
+  pushad
+  pushfd
+  
+  
+  ;calculate character to display
+  mov eax, [inside_irq]
+  add eax, 48 ;add ascii of 0 character
+  
+  ;push arguments
+  push dword 10
+  push eax
+  push dword DEBUG_INSIDEIRQ
+  
+  call terminal_set_debug
+  
+  ;pop arguments
+  add esp, DWSIZE*3
+
+  
+  ;calculate character to display
+  mov eax, [inside_exc]
+  add eax, 48 ;add ascii of 0 character
+  
+  ;push arguments
+  push dword 10
+  push eax
+  push dword DEBUG_INSIDEEXC
+  
+  call terminal_set_debug
+  
+  ;pop arguments
+  add esp, DWSIZE*3
+
+  
+  ;restore registers
+  popfd
+  popad
+
   
   ;deal with stack frame pointer
-  push ebp 
-  mov ebp, esp;
+  mfence
+  push ebp
+  mov ebp, esp
+  mfence
   
-  pushad;
-  pushfd;
+  ;make sure code value argument to handler defaults to 0
+  mov ebx, 0
   
-  ;set_debug_char(DEBUG_EXC, 69, RED)
-  ;set_debug_int(DEBUG_EXC, 5, 4, RED)
+  ;check if theres an error code on the stack
+  ;mov eax, exc_has_error
+  ;add eax, 4*DWSIZE
+  ;mov eax, dword [eax]
+  ;test eax, 1
   
-  cld
+  ;no error code?
+  ;jnz .next
+
+  ;get error code
+  ;mov edx, [esp+DWSIZE]
+  ;add ebp, DWSIZE
   
-  inc dword [_except_depth];
+  ;.next:
   
-  mov eax, 4;
+  ;update eip in cpudata structure
+  mov ecx, [k_curtaskp]
+  add ecx, 56+DWSIZE*9 ;add offset to eip pointer
+  mov eax, dword [ebp + DWSIZE]
+  mov dword [ecx], eax
   
-  push ebp;
-  push dword [ebp + DWSIZE];
-  push dword [ebp];
-  push eax;
+  ;arguments to __on_exception are stored in eax, ebx, ecx
   
+  ;store code
+  mov eax,  4
+  
+  ;store pointer to cpuid structure
+  mov ecx, [k_curtaskp]
+  add ecx, 56
+  
+  ;change long-return address
+  mov dword [ebp + DWSIZE], __on_exception
+
   ;clear exceptions
-  fclex;
+  fclex
   
-  extern _exc_handler4;
-  mov ebx, .aftercall
-  call _exc_handler4;
-  .aftercall:
-  
-  pop eax;
-  add esp, DWSIZE*3;
+  pop ebp
 
-  dec dword [_except_depth];
-  jz .cleardebug;
-
-  .back:
-    popfd;
-    popad;
-    
-    fclex;
-    
-    ;pop saved frame pointer
-    pop ebp
-    
-    mfence
-    
-    
-  mov [dword 0xB8000], dword _CGRE
-  sti;
-
-    iret
-  
-  .cleardebug:
-    
-  pushad;
-  
-  push dword BLACK
-  push dword 101
-  push dword DEBUG_EXC
-  call terminal_set_debug
-  pop eax;
-  pop eax;
-  pop eax;
-  
-  popad;
-
-    jmp .back
+  dec dword [inside_exc]
+  iret
 
 exr_5: 
   align 8;
   
-  mfence
+  
+  push eax
+  
+  mov eax, [k_curtaskp]
+  add eax, 56
+  
+  mov [eax+DWSIZE*7], ecx
+  mov [eax+DWSIZE*6], edx
+  mov [eax+DWSIZE*5], ebx
+  
+  mov [eax+DWSIZE*4], esp
+  add dword [eax+DWSIZE*4], DWSIZE*6 ;stack should be: eax, return addr, cs (0x08), eflags
+  
+  mov [eax+DWSIZE*3], ebp
+  mov [eax+DWSIZE*2], esi
+  mov [eax+DWSIZE*1], edi
+  
+  ;save eax
+  pop ebx
+  mov [eax+DWSIZE*8], ebx
+  
+  ;save eflags
+  pushfd
+  pop ebx
+  or ebx, 1<<9 ;ensure interrupt are enabled
+  
+  mov [eax], ebx
+
+  
+  inc dword [inside_exc]
+  
+  ;save registers
+  pushad
+  pushfd
+  
+  
+  ;calculate character to display
+  mov eax, [inside_irq]
+  add eax, 48 ;add ascii of 0 character
+  
+  ;push arguments
+  push dword 10
+  push eax
+  push dword DEBUG_INSIDEIRQ
+  
+  call terminal_set_debug
+  
+  ;pop arguments
+  add esp, DWSIZE*3
+
+  
+  ;calculate character to display
+  mov eax, [inside_exc]
+  add eax, 48 ;add ascii of 0 character
+  
+  ;push arguments
+  push dword 10
+  push eax
+  push dword DEBUG_INSIDEEXC
+  
+  call terminal_set_debug
+  
+  ;pop arguments
+  add esp, DWSIZE*3
+
+  
+  ;restore registers
+  popfd
+  popad
+
   
   ;deal with stack frame pointer
-  push ebp 
-  mov ebp, esp;
+  mfence
+  push ebp
+  mov ebp, esp
+  mfence
   
-  pushad;
-  pushfd;
+  ;make sure code value argument to handler defaults to 0
+  mov ebx, 0
   
-  ;set_debug_char(DEBUG_EXC, 69, RED)
-  ;set_debug_int(DEBUG_EXC, 5, 5, RED)
+  ;check if theres an error code on the stack
+  ;mov eax, exc_has_error
+  ;add eax, 5*DWSIZE
+  ;mov eax, dword [eax]
+  ;test eax, 1
   
-  cld
+  ;no error code?
+  ;jnz .next
+
+  ;get error code
+  ;mov edx, [esp+DWSIZE]
+  ;add ebp, DWSIZE
   
-  inc dword [_except_depth];
+  ;.next:
   
-  mov eax, 5;
+  ;update eip in cpudata structure
+  mov ecx, [k_curtaskp]
+  add ecx, 56+DWSIZE*9 ;add offset to eip pointer
+  mov eax, dword [ebp + DWSIZE]
+  mov dword [ecx], eax
   
-  push ebp;
-  push dword [ebp + DWSIZE];
-  push dword [ebp];
-  push eax;
+  ;arguments to __on_exception are stored in eax, ebx, ecx
   
+  ;store code
+  mov eax,  5
+  
+  ;store pointer to cpuid structure
+  mov ecx, [k_curtaskp]
+  add ecx, 56
+  
+  ;change long-return address
+  mov dword [ebp + DWSIZE], __on_exception
+
   ;clear exceptions
-  fclex;
+  fclex
   
-  extern _exc_handler5;
-  mov ebx, .aftercall
-  call _exc_handler5;
-  .aftercall:
-  
-  pop eax;
-  add esp, DWSIZE*3;
+  pop ebp
 
-  dec dword [_except_depth];
-  jz .cleardebug;
-
-  .back:
-    popfd;
-    popad;
-    
-    fclex;
-    
-    ;pop saved frame pointer
-    pop ebp
-    
-    mfence
-    
-    
-  mov [dword 0xB8000], dword _CGRE
-  sti;
-
-    iret
-  
-  .cleardebug:
-    
-  pushad;
-  
-  push dword BLACK
-  push dword 101
-  push dword DEBUG_EXC
-  call terminal_set_debug
-  pop eax;
-  pop eax;
-  pop eax;
-  
-  popad;
-
-    jmp .back
+  dec dword [inside_exc]
+  iret
 
 exr_6: 
   align 8;
   
-  mfence
+  
+  push eax
+  
+  mov eax, [k_curtaskp]
+  add eax, 56
+  
+  mov [eax+DWSIZE*7], ecx
+  mov [eax+DWSIZE*6], edx
+  mov [eax+DWSIZE*5], ebx
+  
+  mov [eax+DWSIZE*4], esp
+  add dword [eax+DWSIZE*4], DWSIZE*6 ;stack should be: eax, return addr, cs (0x08), eflags
+  
+  mov [eax+DWSIZE*3], ebp
+  mov [eax+DWSIZE*2], esi
+  mov [eax+DWSIZE*1], edi
+  
+  ;save eax
+  pop ebx
+  mov [eax+DWSIZE*8], ebx
+  
+  ;save eflags
+  pushfd
+  pop ebx
+  or ebx, 1<<9 ;ensure interrupt are enabled
+  
+  mov [eax], ebx
+
+  
+  inc dword [inside_exc]
+  
+  ;save registers
+  pushad
+  pushfd
+  
+  
+  ;calculate character to display
+  mov eax, [inside_irq]
+  add eax, 48 ;add ascii of 0 character
+  
+  ;push arguments
+  push dword 10
+  push eax
+  push dword DEBUG_INSIDEIRQ
+  
+  call terminal_set_debug
+  
+  ;pop arguments
+  add esp, DWSIZE*3
+
+  
+  ;calculate character to display
+  mov eax, [inside_exc]
+  add eax, 48 ;add ascii of 0 character
+  
+  ;push arguments
+  push dword 10
+  push eax
+  push dword DEBUG_INSIDEEXC
+  
+  call terminal_set_debug
+  
+  ;pop arguments
+  add esp, DWSIZE*3
+
+  
+  ;restore registers
+  popfd
+  popad
+
   
   ;deal with stack frame pointer
-  push ebp 
-  mov ebp, esp;
+  mfence
+  push ebp
+  mov ebp, esp
+  mfence
   
-  pushad;
-  pushfd;
+  ;make sure code value argument to handler defaults to 0
+  mov ebx, 0
   
-  ;set_debug_char(DEBUG_EXC, 69, RED)
-  ;set_debug_int(DEBUG_EXC, 5, 6, RED)
+  ;check if theres an error code on the stack
+  ;mov eax, exc_has_error
+  ;add eax, 6*DWSIZE
+  ;mov eax, dword [eax]
+  ;test eax, 1
   
-  cld
+  ;no error code?
+  ;jnz .next
+
+  ;get error code
+  ;mov edx, [esp+DWSIZE]
+  ;add ebp, DWSIZE
   
-  inc dword [_except_depth];
+  ;.next:
   
-  mov eax, 6;
+  ;update eip in cpudata structure
+  mov ecx, [k_curtaskp]
+  add ecx, 56+DWSIZE*9 ;add offset to eip pointer
+  mov eax, dword [ebp + DWSIZE]
+  mov dword [ecx], eax
   
-  push ebp;
-  push dword [ebp + DWSIZE];
-  push dword [ebp];
-  push eax;
+  ;arguments to __on_exception are stored in eax, ebx, ecx
   
+  ;store code
+  mov eax,  6
+  
+  ;store pointer to cpuid structure
+  mov ecx, [k_curtaskp]
+  add ecx, 56
+  
+  ;change long-return address
+  mov dword [ebp + DWSIZE], __on_exception
+
   ;clear exceptions
-  fclex;
+  fclex
   
-  extern _exc_handler6;
-  mov ebx, .aftercall
-  call _exc_handler6;
-  .aftercall:
-  
-  pop eax;
-  add esp, DWSIZE*3;
+  pop ebp
 
-  dec dword [_except_depth];
-  jz .cleardebug;
-
-  .back:
-    popfd;
-    popad;
-    
-    fclex;
-    
-    ;pop saved frame pointer
-    pop ebp
-    
-    mfence
-    
-    
-  mov [dword 0xB8000], dword _CGRE
-  sti;
-
-    iret
-  
-  .cleardebug:
-    
-  pushad;
-  
-  push dword BLACK
-  push dword 101
-  push dword DEBUG_EXC
-  call terminal_set_debug
-  pop eax;
-  pop eax;
-  pop eax;
-  
-  popad;
-
-    jmp .back
+  dec dword [inside_exc]
+  iret
 
 exr_7: 
   align 8;
   
-  mfence
+  
+  push eax
+  
+  mov eax, [k_curtaskp]
+  add eax, 56
+  
+  mov [eax+DWSIZE*7], ecx
+  mov [eax+DWSIZE*6], edx
+  mov [eax+DWSIZE*5], ebx
+  
+  mov [eax+DWSIZE*4], esp
+  add dword [eax+DWSIZE*4], DWSIZE*6 ;stack should be: eax, return addr, cs (0x08), eflags
+  
+  mov [eax+DWSIZE*3], ebp
+  mov [eax+DWSIZE*2], esi
+  mov [eax+DWSIZE*1], edi
+  
+  ;save eax
+  pop ebx
+  mov [eax+DWSIZE*8], ebx
+  
+  ;save eflags
+  pushfd
+  pop ebx
+  or ebx, 1<<9 ;ensure interrupt are enabled
+  
+  mov [eax], ebx
+
+  
+  inc dword [inside_exc]
+  
+  ;save registers
+  pushad
+  pushfd
+  
+  
+  ;calculate character to display
+  mov eax, [inside_irq]
+  add eax, 48 ;add ascii of 0 character
+  
+  ;push arguments
+  push dword 10
+  push eax
+  push dword DEBUG_INSIDEIRQ
+  
+  call terminal_set_debug
+  
+  ;pop arguments
+  add esp, DWSIZE*3
+
+  
+  ;calculate character to display
+  mov eax, [inside_exc]
+  add eax, 48 ;add ascii of 0 character
+  
+  ;push arguments
+  push dword 10
+  push eax
+  push dword DEBUG_INSIDEEXC
+  
+  call terminal_set_debug
+  
+  ;pop arguments
+  add esp, DWSIZE*3
+
+  
+  ;restore registers
+  popfd
+  popad
+
   
   ;deal with stack frame pointer
-  push ebp 
-  mov ebp, esp;
+  mfence
+  push ebp
+  mov ebp, esp
+  mfence
   
-  pushad;
-  pushfd;
+  ;make sure code value argument to handler defaults to 0
+  mov ebx, 0
   
-  ;set_debug_char(DEBUG_EXC, 69, RED)
-  ;set_debug_int(DEBUG_EXC, 5, 7, RED)
+  ;check if theres an error code on the stack
+  ;mov eax, exc_has_error
+  ;add eax, 7*DWSIZE
+  ;mov eax, dword [eax]
+  ;test eax, 1
   
-  cld
+  ;no error code?
+  ;jnz .next
+
+  ;get error code
+  ;mov edx, [esp+DWSIZE]
+  ;add ebp, DWSIZE
   
-  inc dword [_except_depth];
+  ;.next:
   
-  mov eax, 7;
+  ;update eip in cpudata structure
+  mov ecx, [k_curtaskp]
+  add ecx, 56+DWSIZE*9 ;add offset to eip pointer
+  mov eax, dword [ebp + DWSIZE]
+  mov dword [ecx], eax
   
-  push ebp;
-  push dword [ebp + DWSIZE];
-  push dword [ebp];
-  push eax;
+  ;arguments to __on_exception are stored in eax, ebx, ecx
   
+  ;store code
+  mov eax,  7
+  
+  ;store pointer to cpuid structure
+  mov ecx, [k_curtaskp]
+  add ecx, 56
+  
+  ;change long-return address
+  mov dword [ebp + DWSIZE], __on_exception
+
   ;clear exceptions
-  fclex;
+  fclex
   
-  extern _exc_handler7;
-  mov ebx, .aftercall
-  call _exc_handler7;
-  .aftercall:
-  
-  pop eax;
-  add esp, DWSIZE*3;
+  pop ebp
 
-  dec dword [_except_depth];
-  jz .cleardebug;
-
-  .back:
-    popfd;
-    popad;
-    
-    fclex;
-    
-    ;pop saved frame pointer
-    pop ebp
-    
-    mfence
-    
-    
-  mov [dword 0xB8000], dword _CGRE
-  sti;
-
-    iret
-  
-  .cleardebug:
-    
-  pushad;
-  
-  push dword BLACK
-  push dword 101
-  push dword DEBUG_EXC
-  call terminal_set_debug
-  pop eax;
-  pop eax;
-  pop eax;
-  
-  popad;
-
-    jmp .back
+  dec dword [inside_exc]
+  iret
 
 exr_8: 
   align 8;
   
-  mfence
+  
+  push eax
+  
+  mov eax, [k_curtaskp]
+  add eax, 56
+  
+  mov [eax+DWSIZE*7], ecx
+  mov [eax+DWSIZE*6], edx
+  mov [eax+DWSIZE*5], ebx
+  
+  mov [eax+DWSIZE*4], esp
+  add dword [eax+DWSIZE*4], DWSIZE*6 ;stack should be: eax, return addr, cs (0x08), eflags
+  
+  mov [eax+DWSIZE*3], ebp
+  mov [eax+DWSIZE*2], esi
+  mov [eax+DWSIZE*1], edi
+  
+  ;save eax
+  pop ebx
+  mov [eax+DWSIZE*8], ebx
+  
+  ;save eflags
+  pushfd
+  pop ebx
+  or ebx, 1<<9 ;ensure interrupt are enabled
+  
+  mov [eax], ebx
+
+  
+  inc dword [inside_exc]
+  
+  ;save registers
+  pushad
+  pushfd
+  
+  
+  ;calculate character to display
+  mov eax, [inside_irq]
+  add eax, 48 ;add ascii of 0 character
+  
+  ;push arguments
+  push dword 10
+  push eax
+  push dword DEBUG_INSIDEIRQ
+  
+  call terminal_set_debug
+  
+  ;pop arguments
+  add esp, DWSIZE*3
+
+  
+  ;calculate character to display
+  mov eax, [inside_exc]
+  add eax, 48 ;add ascii of 0 character
+  
+  ;push arguments
+  push dword 10
+  push eax
+  push dword DEBUG_INSIDEEXC
+  
+  call terminal_set_debug
+  
+  ;pop arguments
+  add esp, DWSIZE*3
+
+  
+  ;restore registers
+  popfd
+  popad
+
   
   ;deal with stack frame pointer
-  push ebp 
-  mov ebp, esp;
+  mfence
+  push ebp
+  mov ebp, esp
+  mfence
   
-  pushad;
-  pushfd;
+  ;make sure code value argument to handler defaults to 0
+  mov ebx, 0
   
-  ;set_debug_char(DEBUG_EXC, 69, RED)
-  ;set_debug_int(DEBUG_EXC, 5, 8, RED)
+  ;check if theres an error code on the stack
+  ;mov eax, exc_has_error
+  ;add eax, 8*DWSIZE
+  ;mov eax, dword [eax]
+  ;test eax, 1
   
-  cld
+  ;no error code?
+  ;jnz .next
+
+  ;get error code
+  ;mov edx, [esp+DWSIZE]
+  ;add ebp, DWSIZE
   
-  inc dword [_except_depth];
+  ;.next:
   
-  mov eax, 8;
+  ;update eip in cpudata structure
+  mov ecx, [k_curtaskp]
+  add ecx, 56+DWSIZE*9 ;add offset to eip pointer
+  mov eax, dword [ebp + DWSIZE]
+  mov dword [ecx], eax
   
-  push ebp;
-  push dword [ebp + DWSIZE];
-  push dword [ebp];
-  push eax;
+  ;arguments to __on_exception are stored in eax, ebx, ecx
   
+  ;store code
+  mov eax,  8
+  
+  ;store pointer to cpuid structure
+  mov ecx, [k_curtaskp]
+  add ecx, 56
+  
+  ;change long-return address
+  mov dword [ebp + DWSIZE], __on_exception
+
   ;clear exceptions
-  fclex;
+  fclex
   
-  extern _exc_handler8;
-  mov ebx, .aftercall
-  call _exc_handler8;
-  .aftercall:
-  
-  pop eax;
-  add esp, DWSIZE*3;
+  pop ebp
 
-  dec dword [_except_depth];
-  jz .cleardebug;
-
-  .back:
-    popfd;
-    popad;
-    
-    fclex;
-    
-    ;pop saved frame pointer
-    pop ebp
-    
-    mfence
-    
-    
-  mov [dword 0xB8000], dword _CGRE
-  sti;
-
-    iret
-  
-  .cleardebug:
-    
-  pushad;
-  
-  push dword BLACK
-  push dword 101
-  push dword DEBUG_EXC
-  call terminal_set_debug
-  pop eax;
-  pop eax;
-  pop eax;
-  
-  popad;
-
-    jmp .back
+  dec dword [inside_exc]
+  iret
 
 exr_9: 
   align 8;
   
-  mfence
+  
+  push eax
+  
+  mov eax, [k_curtaskp]
+  add eax, 56
+  
+  mov [eax+DWSIZE*7], ecx
+  mov [eax+DWSIZE*6], edx
+  mov [eax+DWSIZE*5], ebx
+  
+  mov [eax+DWSIZE*4], esp
+  add dword [eax+DWSIZE*4], DWSIZE*6 ;stack should be: eax, return addr, cs (0x08), eflags
+  
+  mov [eax+DWSIZE*3], ebp
+  mov [eax+DWSIZE*2], esi
+  mov [eax+DWSIZE*1], edi
+  
+  ;save eax
+  pop ebx
+  mov [eax+DWSIZE*8], ebx
+  
+  ;save eflags
+  pushfd
+  pop ebx
+  or ebx, 1<<9 ;ensure interrupt are enabled
+  
+  mov [eax], ebx
+
+  
+  inc dword [inside_exc]
+  
+  ;save registers
+  pushad
+  pushfd
+  
+  
+  ;calculate character to display
+  mov eax, [inside_irq]
+  add eax, 48 ;add ascii of 0 character
+  
+  ;push arguments
+  push dword 10
+  push eax
+  push dword DEBUG_INSIDEIRQ
+  
+  call terminal_set_debug
+  
+  ;pop arguments
+  add esp, DWSIZE*3
+
+  
+  ;calculate character to display
+  mov eax, [inside_exc]
+  add eax, 48 ;add ascii of 0 character
+  
+  ;push arguments
+  push dword 10
+  push eax
+  push dword DEBUG_INSIDEEXC
+  
+  call terminal_set_debug
+  
+  ;pop arguments
+  add esp, DWSIZE*3
+
+  
+  ;restore registers
+  popfd
+  popad
+
   
   ;deal with stack frame pointer
-  push ebp 
-  mov ebp, esp;
+  mfence
+  push ebp
+  mov ebp, esp
+  mfence
   
-  pushad;
-  pushfd;
+  ;make sure code value argument to handler defaults to 0
+  mov ebx, 0
   
-  ;set_debug_char(DEBUG_EXC, 69, RED)
-  ;set_debug_int(DEBUG_EXC, 5, 9, RED)
+  ;check if theres an error code on the stack
+  ;mov eax, exc_has_error
+  ;add eax, 9*DWSIZE
+  ;mov eax, dword [eax]
+  ;test eax, 1
   
-  cld
+  ;no error code?
+  ;jnz .next
+
+  ;get error code
+  ;mov edx, [esp+DWSIZE]
+  ;add ebp, DWSIZE
   
-  inc dword [_except_depth];
+  ;.next:
   
-  mov eax, 9;
+  ;update eip in cpudata structure
+  mov ecx, [k_curtaskp]
+  add ecx, 56+DWSIZE*9 ;add offset to eip pointer
+  mov eax, dword [ebp + DWSIZE]
+  mov dword [ecx], eax
   
-  push ebp;
-  push dword [ebp + DWSIZE];
-  push dword [ebp];
-  push eax;
+  ;arguments to __on_exception are stored in eax, ebx, ecx
   
+  ;store code
+  mov eax,  9
+  
+  ;store pointer to cpuid structure
+  mov ecx, [k_curtaskp]
+  add ecx, 56
+  
+  ;change long-return address
+  mov dword [ebp + DWSIZE], __on_exception
+
   ;clear exceptions
-  fclex;
+  fclex
   
-  extern _exc_handler9;
-  mov ebx, .aftercall
-  call _exc_handler9;
-  .aftercall:
-  
-  pop eax;
-  add esp, DWSIZE*3;
+  pop ebp
 
-  dec dword [_except_depth];
-  jz .cleardebug;
-
-  .back:
-    popfd;
-    popad;
-    
-    fclex;
-    
-    ;pop saved frame pointer
-    pop ebp
-    
-    mfence
-    
-    
-  mov [dword 0xB8000], dword _CGRE
-  sti;
-
-    iret
-  
-  .cleardebug:
-    
-  pushad;
-  
-  push dword BLACK
-  push dword 101
-  push dword DEBUG_EXC
-  call terminal_set_debug
-  pop eax;
-  pop eax;
-  pop eax;
-  
-  popad;
-
-    jmp .back
+  dec dword [inside_exc]
+  iret
 
 exr_10: 
   align 8;
   
-  mfence
+  
+  push eax
+  
+  mov eax, [k_curtaskp]
+  add eax, 56
+  
+  mov [eax+DWSIZE*7], ecx
+  mov [eax+DWSIZE*6], edx
+  mov [eax+DWSIZE*5], ebx
+  
+  mov [eax+DWSIZE*4], esp
+  add dword [eax+DWSIZE*4], DWSIZE*6 ;stack should be: eax, return addr, cs (0x08), eflags
+  
+  mov [eax+DWSIZE*3], ebp
+  mov [eax+DWSIZE*2], esi
+  mov [eax+DWSIZE*1], edi
+  
+  ;save eax
+  pop ebx
+  mov [eax+DWSIZE*8], ebx
+  
+  ;save eflags
+  pushfd
+  pop ebx
+  or ebx, 1<<9 ;ensure interrupt are enabled
+  
+  mov [eax], ebx
+
+  
+  inc dword [inside_exc]
+  
+  ;save registers
+  pushad
+  pushfd
+  
+  
+  ;calculate character to display
+  mov eax, [inside_irq]
+  add eax, 48 ;add ascii of 0 character
+  
+  ;push arguments
+  push dword 10
+  push eax
+  push dword DEBUG_INSIDEIRQ
+  
+  call terminal_set_debug
+  
+  ;pop arguments
+  add esp, DWSIZE*3
+
+  
+  ;calculate character to display
+  mov eax, [inside_exc]
+  add eax, 48 ;add ascii of 0 character
+  
+  ;push arguments
+  push dword 10
+  push eax
+  push dword DEBUG_INSIDEEXC
+  
+  call terminal_set_debug
+  
+  ;pop arguments
+  add esp, DWSIZE*3
+
+  
+  ;restore registers
+  popfd
+  popad
+
   
   ;deal with stack frame pointer
-  push ebp 
-  mov ebp, esp;
+  mfence
+  push ebp
+  mov ebp, esp
+  mfence
   
-  pushad;
-  pushfd;
+  ;make sure code value argument to handler defaults to 0
+  mov ebx, 0
   
-  ;set_debug_char(DEBUG_EXC, 69, RED)
-  ;set_debug_int(DEBUG_EXC, 5, 10, RED)
+  ;check if theres an error code on the stack
+  ;mov eax, exc_has_error
+  ;add eax, 10*DWSIZE
+  ;mov eax, dword [eax]
+  ;test eax, 1
   
-  cld
+  ;no error code?
+  ;jnz .next
+
+  ;get error code
+  ;mov edx, [esp+DWSIZE]
+  ;add ebp, DWSIZE
   
-  inc dword [_except_depth];
+  ;.next:
   
-  mov eax, 10;
+  ;update eip in cpudata structure
+  mov ecx, [k_curtaskp]
+  add ecx, 56+DWSIZE*9 ;add offset to eip pointer
+  mov eax, dword [ebp + DWSIZE]
+  mov dword [ecx], eax
   
-  push ebp;
-  push dword [ebp + DWSIZE];
-  push dword [ebp];
-  push eax;
+  ;arguments to __on_exception are stored in eax, ebx, ecx
   
+  ;store code
+  mov eax,  10
+  
+  ;store pointer to cpuid structure
+  mov ecx, [k_curtaskp]
+  add ecx, 56
+  
+  ;change long-return address
+  mov dword [ebp + DWSIZE], __on_exception
+
   ;clear exceptions
-  fclex;
+  fclex
   
-  extern _exc_handler10;
-  mov ebx, .aftercall
-  call _exc_handler10;
-  .aftercall:
-  
-  pop eax;
-  add esp, DWSIZE*3;
+  pop ebp
 
-  dec dword [_except_depth];
-  jz .cleardebug;
-
-  .back:
-    popfd;
-    popad;
-    
-    fclex;
-    
-    ;pop saved frame pointer
-    pop ebp
-    
-    mfence
-    
-    
-  mov [dword 0xB8000], dword _CGRE
-  sti;
-
-    iret
-  
-  .cleardebug:
-    
-  pushad;
-  
-  push dword BLACK
-  push dword 101
-  push dword DEBUG_EXC
-  call terminal_set_debug
-  pop eax;
-  pop eax;
-  pop eax;
-  
-  popad;
-
-    jmp .back
+  dec dword [inside_exc]
+  iret
 
 exr_11: 
   align 8;
   
-  mfence
+  
+  push eax
+  
+  mov eax, [k_curtaskp]
+  add eax, 56
+  
+  mov [eax+DWSIZE*7], ecx
+  mov [eax+DWSIZE*6], edx
+  mov [eax+DWSIZE*5], ebx
+  
+  mov [eax+DWSIZE*4], esp
+  add dword [eax+DWSIZE*4], DWSIZE*6 ;stack should be: eax, return addr, cs (0x08), eflags
+  
+  mov [eax+DWSIZE*3], ebp
+  mov [eax+DWSIZE*2], esi
+  mov [eax+DWSIZE*1], edi
+  
+  ;save eax
+  pop ebx
+  mov [eax+DWSIZE*8], ebx
+  
+  ;save eflags
+  pushfd
+  pop ebx
+  or ebx, 1<<9 ;ensure interrupt are enabled
+  
+  mov [eax], ebx
+
+  
+  inc dword [inside_exc]
+  
+  ;save registers
+  pushad
+  pushfd
+  
+  
+  ;calculate character to display
+  mov eax, [inside_irq]
+  add eax, 48 ;add ascii of 0 character
+  
+  ;push arguments
+  push dword 10
+  push eax
+  push dword DEBUG_INSIDEIRQ
+  
+  call terminal_set_debug
+  
+  ;pop arguments
+  add esp, DWSIZE*3
+
+  
+  ;calculate character to display
+  mov eax, [inside_exc]
+  add eax, 48 ;add ascii of 0 character
+  
+  ;push arguments
+  push dword 10
+  push eax
+  push dword DEBUG_INSIDEEXC
+  
+  call terminal_set_debug
+  
+  ;pop arguments
+  add esp, DWSIZE*3
+
+  
+  ;restore registers
+  popfd
+  popad
+
   
   ;deal with stack frame pointer
-  push ebp 
-  mov ebp, esp;
+  mfence
+  push ebp
+  mov ebp, esp
+  mfence
   
-  pushad;
-  pushfd;
+  ;make sure code value argument to handler defaults to 0
+  mov ebx, 0
   
-  ;set_debug_char(DEBUG_EXC, 69, RED)
-  ;set_debug_int(DEBUG_EXC, 5, 11, RED)
+  ;check if theres an error code on the stack
+  ;mov eax, exc_has_error
+  ;add eax, 11*DWSIZE
+  ;mov eax, dword [eax]
+  ;test eax, 1
   
-  cld
+  ;no error code?
+  ;jnz .next
+
+  ;get error code
+  ;mov edx, [esp+DWSIZE]
+  ;add ebp, DWSIZE
   
-  inc dword [_except_depth];
+  ;.next:
   
-  mov eax, 11;
+  ;update eip in cpudata structure
+  mov ecx, [k_curtaskp]
+  add ecx, 56+DWSIZE*9 ;add offset to eip pointer
+  mov eax, dword [ebp + DWSIZE]
+  mov dword [ecx], eax
   
-  push ebp;
-  push dword [ebp + DWSIZE];
-  push dword [ebp];
-  push eax;
+  ;arguments to __on_exception are stored in eax, ebx, ecx
   
+  ;store code
+  mov eax,  11
+  
+  ;store pointer to cpuid structure
+  mov ecx, [k_curtaskp]
+  add ecx, 56
+  
+  ;change long-return address
+  mov dword [ebp + DWSIZE], __on_exception
+
   ;clear exceptions
-  fclex;
+  fclex
   
-  extern _exc_handler11;
-  mov ebx, .aftercall
-  call _exc_handler11;
-  .aftercall:
-  
-  pop eax;
-  add esp, DWSIZE*3;
+  pop ebp
 
-  dec dword [_except_depth];
-  jz .cleardebug;
-
-  .back:
-    popfd;
-    popad;
-    
-    fclex;
-    
-    ;pop saved frame pointer
-    pop ebp
-    
-    mfence
-    
-    
-  mov [dword 0xB8000], dword _CGRE
-  sti;
-
-    iret
-  
-  .cleardebug:
-    
-  pushad;
-  
-  push dword BLACK
-  push dword 101
-  push dword DEBUG_EXC
-  call terminal_set_debug
-  pop eax;
-  pop eax;
-  pop eax;
-  
-  popad;
-
-    jmp .back
+  dec dword [inside_exc]
+  iret
 
 exr_12: 
   align 8;
   
-  mfence
+  
+  push eax
+  
+  mov eax, [k_curtaskp]
+  add eax, 56
+  
+  mov [eax+DWSIZE*7], ecx
+  mov [eax+DWSIZE*6], edx
+  mov [eax+DWSIZE*5], ebx
+  
+  mov [eax+DWSIZE*4], esp
+  add dword [eax+DWSIZE*4], DWSIZE*6 ;stack should be: eax, return addr, cs (0x08), eflags
+  
+  mov [eax+DWSIZE*3], ebp
+  mov [eax+DWSIZE*2], esi
+  mov [eax+DWSIZE*1], edi
+  
+  ;save eax
+  pop ebx
+  mov [eax+DWSIZE*8], ebx
+  
+  ;save eflags
+  pushfd
+  pop ebx
+  or ebx, 1<<9 ;ensure interrupt are enabled
+  
+  mov [eax], ebx
+
+  
+  inc dword [inside_exc]
+  
+  ;save registers
+  pushad
+  pushfd
+  
+  
+  ;calculate character to display
+  mov eax, [inside_irq]
+  add eax, 48 ;add ascii of 0 character
+  
+  ;push arguments
+  push dword 10
+  push eax
+  push dword DEBUG_INSIDEIRQ
+  
+  call terminal_set_debug
+  
+  ;pop arguments
+  add esp, DWSIZE*3
+
+  
+  ;calculate character to display
+  mov eax, [inside_exc]
+  add eax, 48 ;add ascii of 0 character
+  
+  ;push arguments
+  push dword 10
+  push eax
+  push dword DEBUG_INSIDEEXC
+  
+  call terminal_set_debug
+  
+  ;pop arguments
+  add esp, DWSIZE*3
+
+  
+  ;restore registers
+  popfd
+  popad
+
   
   ;deal with stack frame pointer
-  push ebp 
-  mov ebp, esp;
+  mfence
+  push ebp
+  mov ebp, esp
+  mfence
   
-  pushad;
-  pushfd;
+  ;make sure code value argument to handler defaults to 0
+  mov ebx, 0
   
-  ;set_debug_char(DEBUG_EXC, 69, RED)
-  ;set_debug_int(DEBUG_EXC, 5, 12, RED)
+  ;check if theres an error code on the stack
+  ;mov eax, exc_has_error
+  ;add eax, 12*DWSIZE
+  ;mov eax, dword [eax]
+  ;test eax, 1
   
-  cld
+  ;no error code?
+  ;jnz .next
+
+  ;get error code
+  ;mov edx, [esp+DWSIZE]
+  ;add ebp, DWSIZE
   
-  inc dword [_except_depth];
+  ;.next:
   
-  mov eax, 12;
+  ;update eip in cpudata structure
+  mov ecx, [k_curtaskp]
+  add ecx, 56+DWSIZE*9 ;add offset to eip pointer
+  mov eax, dword [ebp + DWSIZE]
+  mov dword [ecx], eax
   
-  push ebp;
-  push dword [ebp + DWSIZE];
-  push dword [ebp];
-  push eax;
+  ;arguments to __on_exception are stored in eax, ebx, ecx
   
+  ;store code
+  mov eax,  12
+  
+  ;store pointer to cpuid structure
+  mov ecx, [k_curtaskp]
+  add ecx, 56
+  
+  ;change long-return address
+  mov dword [ebp + DWSIZE], __on_exception
+
   ;clear exceptions
-  fclex;
+  fclex
   
-  extern _exc_handler12;
-  mov ebx, .aftercall
-  call _exc_handler12;
-  .aftercall:
-  
-  pop eax;
-  add esp, DWSIZE*3;
+  pop ebp
 
-  dec dword [_except_depth];
-  jz .cleardebug;
-
-  .back:
-    popfd;
-    popad;
-    
-    fclex;
-    
-    ;pop saved frame pointer
-    pop ebp
-    
-    mfence
-    
-    
-  mov [dword 0xB8000], dword _CGRE
-  sti;
-
-    iret
-  
-  .cleardebug:
-    
-  pushad;
-  
-  push dword BLACK
-  push dword 101
-  push dword DEBUG_EXC
-  call terminal_set_debug
-  pop eax;
-  pop eax;
-  pop eax;
-  
-  popad;
-
-    jmp .back
+  dec dword [inside_exc]
+  iret
 
 exr_13: 
   align 8;
   
-  mfence
+  
+  push eax
+  
+  mov eax, [k_curtaskp]
+  add eax, 56
+  
+  mov [eax+DWSIZE*7], ecx
+  mov [eax+DWSIZE*6], edx
+  mov [eax+DWSIZE*5], ebx
+  
+  mov [eax+DWSIZE*4], esp
+  add dword [eax+DWSIZE*4], DWSIZE*6 ;stack should be: eax, return addr, cs (0x08), eflags
+  
+  mov [eax+DWSIZE*3], ebp
+  mov [eax+DWSIZE*2], esi
+  mov [eax+DWSIZE*1], edi
+  
+  ;save eax
+  pop ebx
+  mov [eax+DWSIZE*8], ebx
+  
+  ;save eflags
+  pushfd
+  pop ebx
+  or ebx, 1<<9 ;ensure interrupt are enabled
+  
+  mov [eax], ebx
+
+  
+  inc dword [inside_exc]
+  
+  ;save registers
+  pushad
+  pushfd
+  
+  
+  ;calculate character to display
+  mov eax, [inside_irq]
+  add eax, 48 ;add ascii of 0 character
+  
+  ;push arguments
+  push dword 10
+  push eax
+  push dword DEBUG_INSIDEIRQ
+  
+  call terminal_set_debug
+  
+  ;pop arguments
+  add esp, DWSIZE*3
+
+  
+  ;calculate character to display
+  mov eax, [inside_exc]
+  add eax, 48 ;add ascii of 0 character
+  
+  ;push arguments
+  push dword 10
+  push eax
+  push dword DEBUG_INSIDEEXC
+  
+  call terminal_set_debug
+  
+  ;pop arguments
+  add esp, DWSIZE*3
+
+  
+  ;restore registers
+  popfd
+  popad
+
   
   ;deal with stack frame pointer
-  push ebp 
-  mov ebp, esp;
+  mfence
+  push ebp
+  mov ebp, esp
+  mfence
   
-  pushad;
-  pushfd;
+  ;make sure code value argument to handler defaults to 0
+  mov ebx, 0
   
-  ;set_debug_char(DEBUG_EXC, 69, RED)
-  ;set_debug_int(DEBUG_EXC, 5, 13, RED)
+  ;check if theres an error code on the stack
+  ;mov eax, exc_has_error
+  ;add eax, 13*DWSIZE
+  ;mov eax, dword [eax]
+  ;test eax, 1
   
-  cld
+  ;no error code?
+  ;jnz .next
+
+  ;get error code
+  ;mov edx, [esp+DWSIZE]
+  ;add ebp, DWSIZE
   
-  inc dword [_except_depth];
+  ;.next:
   
-  mov eax, 13;
+  ;update eip in cpudata structure
+  mov ecx, [k_curtaskp]
+  add ecx, 56+DWSIZE*9 ;add offset to eip pointer
+  mov eax, dword [ebp + DWSIZE]
+  mov dword [ecx], eax
   
-  push ebp;
-  push dword [ebp + DWSIZE];
-  push dword [ebp];
-  push eax;
+  ;arguments to __on_exception are stored in eax, ebx, ecx
   
+  ;store code
+  mov eax,  13
+  
+  ;store pointer to cpuid structure
+  mov ecx, [k_curtaskp]
+  add ecx, 56
+  
+  ;change long-return address
+  mov dword [ebp + DWSIZE], __on_exception
+
   ;clear exceptions
-  fclex;
+  fclex
   
-  extern _exc_handler13;
-  mov ebx, .aftercall
-  call _exc_handler13;
-  .aftercall:
-  
-  pop eax;
-  add esp, DWSIZE*3;
+  pop ebp
 
-  dec dword [_except_depth];
-  jz .cleardebug;
-
-  .back:
-    popfd;
-    popad;
-    
-    fclex;
-    
-    ;pop saved frame pointer
-    pop ebp
-    
-    mfence
-    
-    
-  mov [dword 0xB8000], dword _CGRE
-  sti;
-
-    iret
-  
-  .cleardebug:
-    
-  pushad;
-  
-  push dword BLACK
-  push dword 101
-  push dword DEBUG_EXC
-  call terminal_set_debug
-  pop eax;
-  pop eax;
-  pop eax;
-  
-  popad;
-
-    jmp .back
+  dec dword [inside_exc]
+  iret
 
 exr_14: 
   align 8;
   
-  mfence
+  
+  push eax
+  
+  mov eax, [k_curtaskp]
+  add eax, 56
+  
+  mov [eax+DWSIZE*7], ecx
+  mov [eax+DWSIZE*6], edx
+  mov [eax+DWSIZE*5], ebx
+  
+  mov [eax+DWSIZE*4], esp
+  add dword [eax+DWSIZE*4], DWSIZE*6 ;stack should be: eax, return addr, cs (0x08), eflags
+  
+  mov [eax+DWSIZE*3], ebp
+  mov [eax+DWSIZE*2], esi
+  mov [eax+DWSIZE*1], edi
+  
+  ;save eax
+  pop ebx
+  mov [eax+DWSIZE*8], ebx
+  
+  ;save eflags
+  pushfd
+  pop ebx
+  or ebx, 1<<9 ;ensure interrupt are enabled
+  
+  mov [eax], ebx
+
+  
+  inc dword [inside_exc]
+  
+  ;save registers
+  pushad
+  pushfd
+  
+  
+  ;calculate character to display
+  mov eax, [inside_irq]
+  add eax, 48 ;add ascii of 0 character
+  
+  ;push arguments
+  push dword 10
+  push eax
+  push dword DEBUG_INSIDEIRQ
+  
+  call terminal_set_debug
+  
+  ;pop arguments
+  add esp, DWSIZE*3
+
+  
+  ;calculate character to display
+  mov eax, [inside_exc]
+  add eax, 48 ;add ascii of 0 character
+  
+  ;push arguments
+  push dword 10
+  push eax
+  push dword DEBUG_INSIDEEXC
+  
+  call terminal_set_debug
+  
+  ;pop arguments
+  add esp, DWSIZE*3
+
+  
+  ;restore registers
+  popfd
+  popad
+
   
   ;deal with stack frame pointer
-  push ebp 
-  mov ebp, esp;
+  mfence
+  push ebp
+  mov ebp, esp
+  mfence
   
-  pushad;
-  pushfd;
+  ;make sure code value argument to handler defaults to 0
+  mov ebx, 0
   
-  ;set_debug_char(DEBUG_EXC, 69, RED)
-  ;set_debug_int(DEBUG_EXC, 5, 14, RED)
+  ;check if theres an error code on the stack
+  ;mov eax, exc_has_error
+  ;add eax, 14*DWSIZE
+  ;mov eax, dword [eax]
+  ;test eax, 1
   
-  cld
+  ;no error code?
+  ;jnz .next
+
+  ;get error code
+  ;mov edx, [esp+DWSIZE]
+  ;add ebp, DWSIZE
   
-  inc dword [_except_depth];
+  ;.next:
   
-  mov eax, 14;
+  ;update eip in cpudata structure
+  mov ecx, [k_curtaskp]
+  add ecx, 56+DWSIZE*9 ;add offset to eip pointer
+  mov eax, dword [ebp + DWSIZE]
+  mov dword [ecx], eax
   
-  push ebp;
-  push dword [ebp + DWSIZE];
-  push dword [ebp];
-  push eax;
+  ;arguments to __on_exception are stored in eax, ebx, ecx
   
+  ;store code
+  mov eax,  14
+  
+  ;store pointer to cpuid structure
+  mov ecx, [k_curtaskp]
+  add ecx, 56
+  
+  ;change long-return address
+  mov dword [ebp + DWSIZE], __on_exception
+
   ;clear exceptions
-  fclex;
+  fclex
   
-  extern _exc_handler14;
-  mov ebx, .aftercall
-  call _exc_handler14;
-  .aftercall:
-  
-  pop eax;
-  add esp, DWSIZE*3;
+  pop ebp
 
-  dec dword [_except_depth];
-  jz .cleardebug;
-
-  .back:
-    popfd;
-    popad;
-    
-    fclex;
-    
-    ;pop saved frame pointer
-    pop ebp
-    
-    mfence
-    
-    
-  mov [dword 0xB8000], dword _CGRE
-  sti;
-
-    iret
-  
-  .cleardebug:
-    
-  pushad;
-  
-  push dword BLACK
-  push dword 101
-  push dword DEBUG_EXC
-  call terminal_set_debug
-  pop eax;
-  pop eax;
-  pop eax;
-  
-  popad;
-
-    jmp .back
+  dec dword [inside_exc]
+  iret
 
 exr_15: 
   align 8;
   
-  mfence
+  
+  push eax
+  
+  mov eax, [k_curtaskp]
+  add eax, 56
+  
+  mov [eax+DWSIZE*7], ecx
+  mov [eax+DWSIZE*6], edx
+  mov [eax+DWSIZE*5], ebx
+  
+  mov [eax+DWSIZE*4], esp
+  add dword [eax+DWSIZE*4], DWSIZE*6 ;stack should be: eax, return addr, cs (0x08), eflags
+  
+  mov [eax+DWSIZE*3], ebp
+  mov [eax+DWSIZE*2], esi
+  mov [eax+DWSIZE*1], edi
+  
+  ;save eax
+  pop ebx
+  mov [eax+DWSIZE*8], ebx
+  
+  ;save eflags
+  pushfd
+  pop ebx
+  or ebx, 1<<9 ;ensure interrupt are enabled
+  
+  mov [eax], ebx
+
+  
+  inc dword [inside_exc]
+  
+  ;save registers
+  pushad
+  pushfd
+  
+  
+  ;calculate character to display
+  mov eax, [inside_irq]
+  add eax, 48 ;add ascii of 0 character
+  
+  ;push arguments
+  push dword 10
+  push eax
+  push dword DEBUG_INSIDEIRQ
+  
+  call terminal_set_debug
+  
+  ;pop arguments
+  add esp, DWSIZE*3
+
+  
+  ;calculate character to display
+  mov eax, [inside_exc]
+  add eax, 48 ;add ascii of 0 character
+  
+  ;push arguments
+  push dword 10
+  push eax
+  push dword DEBUG_INSIDEEXC
+  
+  call terminal_set_debug
+  
+  ;pop arguments
+  add esp, DWSIZE*3
+
+  
+  ;restore registers
+  popfd
+  popad
+
   
   ;deal with stack frame pointer
-  push ebp 
-  mov ebp, esp;
+  mfence
+  push ebp
+  mov ebp, esp
+  mfence
   
-  pushad;
-  pushfd;
+  ;make sure code value argument to handler defaults to 0
+  mov ebx, 0
   
-  ;set_debug_char(DEBUG_EXC, 69, RED)
-  ;set_debug_int(DEBUG_EXC, 5, 15, RED)
+  ;check if theres an error code on the stack
+  ;mov eax, exc_has_error
+  ;add eax, 15*DWSIZE
+  ;mov eax, dword [eax]
+  ;test eax, 1
   
-  cld
+  ;no error code?
+  ;jnz .next
+
+  ;get error code
+  ;mov edx, [esp+DWSIZE]
+  ;add ebp, DWSIZE
   
-  inc dword [_except_depth];
+  ;.next:
   
-  mov eax, 15;
+  ;update eip in cpudata structure
+  mov ecx, [k_curtaskp]
+  add ecx, 56+DWSIZE*9 ;add offset to eip pointer
+  mov eax, dword [ebp + DWSIZE]
+  mov dword [ecx], eax
   
-  push ebp;
-  push dword [ebp + DWSIZE];
-  push dword [ebp];
-  push eax;
+  ;arguments to __on_exception are stored in eax, ebx, ecx
   
+  ;store code
+  mov eax,  15
+  
+  ;store pointer to cpuid structure
+  mov ecx, [k_curtaskp]
+  add ecx, 56
+  
+  ;change long-return address
+  mov dword [ebp + DWSIZE], __on_exception
+
   ;clear exceptions
-  fclex;
+  fclex
   
-  extern _exc_handler15;
-  mov ebx, .aftercall
-  call _exc_handler15;
-  .aftercall:
-  
-  pop eax;
-  add esp, DWSIZE*3;
+  pop ebp
 
-  dec dword [_except_depth];
-  jz .cleardebug;
-
-  .back:
-    popfd;
-    popad;
-    
-    fclex;
-    
-    ;pop saved frame pointer
-    pop ebp
-    
-    mfence
-    
-    
-  mov [dword 0xB8000], dword _CGRE
-  sti;
-
-    iret
-  
-  .cleardebug:
-    
-  pushad;
-  
-  push dword BLACK
-  push dword 101
-  push dword DEBUG_EXC
-  call terminal_set_debug
-  pop eax;
-  pop eax;
-  pop eax;
-  
-  popad;
-
-    jmp .back
+  dec dword [inside_exc]
+  iret
 
 exr_16: 
   align 8;
   
-  mfence
+  
+  push eax
+  
+  mov eax, [k_curtaskp]
+  add eax, 56
+  
+  mov [eax+DWSIZE*7], ecx
+  mov [eax+DWSIZE*6], edx
+  mov [eax+DWSIZE*5], ebx
+  
+  mov [eax+DWSIZE*4], esp
+  add dword [eax+DWSIZE*4], DWSIZE*6 ;stack should be: eax, return addr, cs (0x08), eflags
+  
+  mov [eax+DWSIZE*3], ebp
+  mov [eax+DWSIZE*2], esi
+  mov [eax+DWSIZE*1], edi
+  
+  ;save eax
+  pop ebx
+  mov [eax+DWSIZE*8], ebx
+  
+  ;save eflags
+  pushfd
+  pop ebx
+  or ebx, 1<<9 ;ensure interrupt are enabled
+  
+  mov [eax], ebx
+
+  
+  inc dword [inside_exc]
+  
+  ;save registers
+  pushad
+  pushfd
+  
+  
+  ;calculate character to display
+  mov eax, [inside_irq]
+  add eax, 48 ;add ascii of 0 character
+  
+  ;push arguments
+  push dword 10
+  push eax
+  push dword DEBUG_INSIDEIRQ
+  
+  call terminal_set_debug
+  
+  ;pop arguments
+  add esp, DWSIZE*3
+
+  
+  ;calculate character to display
+  mov eax, [inside_exc]
+  add eax, 48 ;add ascii of 0 character
+  
+  ;push arguments
+  push dword 10
+  push eax
+  push dword DEBUG_INSIDEEXC
+  
+  call terminal_set_debug
+  
+  ;pop arguments
+  add esp, DWSIZE*3
+
+  
+  ;restore registers
+  popfd
+  popad
+
   
   ;deal with stack frame pointer
-  push ebp 
-  mov ebp, esp;
+  mfence
+  push ebp
+  mov ebp, esp
+  mfence
   
-  pushad;
-  pushfd;
+  ;make sure code value argument to handler defaults to 0
+  mov ebx, 0
   
-  ;set_debug_char(DEBUG_EXC, 69, RED)
-  ;set_debug_int(DEBUG_EXC, 5, 16, RED)
+  ;check if theres an error code on the stack
+  ;mov eax, exc_has_error
+  ;add eax, 16*DWSIZE
+  ;mov eax, dword [eax]
+  ;test eax, 1
   
-  cld
+  ;no error code?
+  ;jnz .next
+
+  ;get error code
+  ;mov edx, [esp+DWSIZE]
+  ;add ebp, DWSIZE
   
-  inc dword [_except_depth];
+  ;.next:
   
-  mov eax, 16;
+  ;update eip in cpudata structure
+  mov ecx, [k_curtaskp]
+  add ecx, 56+DWSIZE*9 ;add offset to eip pointer
+  mov eax, dword [ebp + DWSIZE]
+  mov dword [ecx], eax
   
-  push ebp;
-  push dword [ebp + DWSIZE];
-  push dword [ebp];
-  push eax;
+  ;arguments to __on_exception are stored in eax, ebx, ecx
   
+  ;store code
+  mov eax,  16
+  
+  ;store pointer to cpuid structure
+  mov ecx, [k_curtaskp]
+  add ecx, 56
+  
+  ;change long-return address
+  mov dword [ebp + DWSIZE], __on_exception
+
   ;clear exceptions
-  fclex;
+  fclex
   
-  extern _exc_handler16;
-  mov ebx, .aftercall
-  call _exc_handler16;
-  .aftercall:
-  
-  pop eax;
-  add esp, DWSIZE*3;
+  pop ebp
 
-  dec dword [_except_depth];
-  jz .cleardebug;
-
-  .back:
-    popfd;
-    popad;
-    
-    fclex;
-    
-    ;pop saved frame pointer
-    pop ebp
-    
-    mfence
-    
-    
-  mov [dword 0xB8000], dword _CGRE
-  sti;
-
-    iret
-  
-  .cleardebug:
-    
-  pushad;
-  
-  push dword BLACK
-  push dword 101
-  push dword DEBUG_EXC
-  call terminal_set_debug
-  pop eax;
-  pop eax;
-  pop eax;
-  
-  popad;
-
-    jmp .back
+  dec dword [inside_exc]
+  iret
 
 exr_17: 
   align 8;
   
-  mfence
+  
+  push eax
+  
+  mov eax, [k_curtaskp]
+  add eax, 56
+  
+  mov [eax+DWSIZE*7], ecx
+  mov [eax+DWSIZE*6], edx
+  mov [eax+DWSIZE*5], ebx
+  
+  mov [eax+DWSIZE*4], esp
+  add dword [eax+DWSIZE*4], DWSIZE*6 ;stack should be: eax, return addr, cs (0x08), eflags
+  
+  mov [eax+DWSIZE*3], ebp
+  mov [eax+DWSIZE*2], esi
+  mov [eax+DWSIZE*1], edi
+  
+  ;save eax
+  pop ebx
+  mov [eax+DWSIZE*8], ebx
+  
+  ;save eflags
+  pushfd
+  pop ebx
+  or ebx, 1<<9 ;ensure interrupt are enabled
+  
+  mov [eax], ebx
+
+  
+  inc dword [inside_exc]
+  
+  ;save registers
+  pushad
+  pushfd
+  
+  
+  ;calculate character to display
+  mov eax, [inside_irq]
+  add eax, 48 ;add ascii of 0 character
+  
+  ;push arguments
+  push dword 10
+  push eax
+  push dword DEBUG_INSIDEIRQ
+  
+  call terminal_set_debug
+  
+  ;pop arguments
+  add esp, DWSIZE*3
+
+  
+  ;calculate character to display
+  mov eax, [inside_exc]
+  add eax, 48 ;add ascii of 0 character
+  
+  ;push arguments
+  push dword 10
+  push eax
+  push dword DEBUG_INSIDEEXC
+  
+  call terminal_set_debug
+  
+  ;pop arguments
+  add esp, DWSIZE*3
+
+  
+  ;restore registers
+  popfd
+  popad
+
   
   ;deal with stack frame pointer
-  push ebp 
-  mov ebp, esp;
+  mfence
+  push ebp
+  mov ebp, esp
+  mfence
   
-  pushad;
-  pushfd;
+  ;make sure code value argument to handler defaults to 0
+  mov ebx, 0
   
-  ;set_debug_char(DEBUG_EXC, 69, RED)
-  ;set_debug_int(DEBUG_EXC, 5, 17, RED)
+  ;check if theres an error code on the stack
+  ;mov eax, exc_has_error
+  ;add eax, 17*DWSIZE
+  ;mov eax, dword [eax]
+  ;test eax, 1
   
-  cld
+  ;no error code?
+  ;jnz .next
+
+  ;get error code
+  ;mov edx, [esp+DWSIZE]
+  ;add ebp, DWSIZE
   
-  inc dword [_except_depth];
+  ;.next:
   
-  mov eax, 17;
+  ;update eip in cpudata structure
+  mov ecx, [k_curtaskp]
+  add ecx, 56+DWSIZE*9 ;add offset to eip pointer
+  mov eax, dword [ebp + DWSIZE]
+  mov dword [ecx], eax
   
-  push ebp;
-  push dword [ebp + DWSIZE];
-  push dword [ebp];
-  push eax;
+  ;arguments to __on_exception are stored in eax, ebx, ecx
   
+  ;store code
+  mov eax,  17
+  
+  ;store pointer to cpuid structure
+  mov ecx, [k_curtaskp]
+  add ecx, 56
+  
+  ;change long-return address
+  mov dword [ebp + DWSIZE], __on_exception
+
   ;clear exceptions
-  fclex;
+  fclex
   
-  extern _exc_handler17;
-  mov ebx, .aftercall
-  call _exc_handler17;
-  .aftercall:
-  
-  pop eax;
-  add esp, DWSIZE*3;
+  pop ebp
 
-  dec dword [_except_depth];
-  jz .cleardebug;
-
-  .back:
-    popfd;
-    popad;
-    
-    fclex;
-    
-    ;pop saved frame pointer
-    pop ebp
-    
-    mfence
-    
-    
-  mov [dword 0xB8000], dword _CGRE
-  sti;
-
-    iret
-  
-  .cleardebug:
-    
-  pushad;
-  
-  push dword BLACK
-  push dword 101
-  push dword DEBUG_EXC
-  call terminal_set_debug
-  pop eax;
-  pop eax;
-  pop eax;
-  
-  popad;
-
-    jmp .back
+  dec dword [inside_exc]
+  iret
 
 exr_18: 
   align 8;
   
-  mfence
+  
+  push eax
+  
+  mov eax, [k_curtaskp]
+  add eax, 56
+  
+  mov [eax+DWSIZE*7], ecx
+  mov [eax+DWSIZE*6], edx
+  mov [eax+DWSIZE*5], ebx
+  
+  mov [eax+DWSIZE*4], esp
+  add dword [eax+DWSIZE*4], DWSIZE*6 ;stack should be: eax, return addr, cs (0x08), eflags
+  
+  mov [eax+DWSIZE*3], ebp
+  mov [eax+DWSIZE*2], esi
+  mov [eax+DWSIZE*1], edi
+  
+  ;save eax
+  pop ebx
+  mov [eax+DWSIZE*8], ebx
+  
+  ;save eflags
+  pushfd
+  pop ebx
+  or ebx, 1<<9 ;ensure interrupt are enabled
+  
+  mov [eax], ebx
+
+  
+  inc dword [inside_exc]
+  
+  ;save registers
+  pushad
+  pushfd
+  
+  
+  ;calculate character to display
+  mov eax, [inside_irq]
+  add eax, 48 ;add ascii of 0 character
+  
+  ;push arguments
+  push dword 10
+  push eax
+  push dword DEBUG_INSIDEIRQ
+  
+  call terminal_set_debug
+  
+  ;pop arguments
+  add esp, DWSIZE*3
+
+  
+  ;calculate character to display
+  mov eax, [inside_exc]
+  add eax, 48 ;add ascii of 0 character
+  
+  ;push arguments
+  push dword 10
+  push eax
+  push dword DEBUG_INSIDEEXC
+  
+  call terminal_set_debug
+  
+  ;pop arguments
+  add esp, DWSIZE*3
+
+  
+  ;restore registers
+  popfd
+  popad
+
   
   ;deal with stack frame pointer
-  push ebp 
-  mov ebp, esp;
+  mfence
+  push ebp
+  mov ebp, esp
+  mfence
   
-  pushad;
-  pushfd;
+  ;make sure code value argument to handler defaults to 0
+  mov ebx, 0
   
-  ;set_debug_char(DEBUG_EXC, 69, RED)
-  ;set_debug_int(DEBUG_EXC, 5, 18, RED)
+  ;check if theres an error code on the stack
+  ;mov eax, exc_has_error
+  ;add eax, 18*DWSIZE
+  ;mov eax, dword [eax]
+  ;test eax, 1
   
-  cld
+  ;no error code?
+  ;jnz .next
+
+  ;get error code
+  ;mov edx, [esp+DWSIZE]
+  ;add ebp, DWSIZE
   
-  inc dword [_except_depth];
+  ;.next:
   
-  mov eax, 18;
+  ;update eip in cpudata structure
+  mov ecx, [k_curtaskp]
+  add ecx, 56+DWSIZE*9 ;add offset to eip pointer
+  mov eax, dword [ebp + DWSIZE]
+  mov dword [ecx], eax
   
-  push ebp;
-  push dword [ebp + DWSIZE];
-  push dword [ebp];
-  push eax;
+  ;arguments to __on_exception are stored in eax, ebx, ecx
   
+  ;store code
+  mov eax,  18
+  
+  ;store pointer to cpuid structure
+  mov ecx, [k_curtaskp]
+  add ecx, 56
+  
+  ;change long-return address
+  mov dword [ebp + DWSIZE], __on_exception
+
   ;clear exceptions
-  fclex;
+  fclex
   
-  extern _exc_handler18;
-  mov ebx, .aftercall
-  call _exc_handler18;
-  .aftercall:
-  
-  pop eax;
-  add esp, DWSIZE*3;
+  pop ebp
 
-  dec dword [_except_depth];
-  jz .cleardebug;
-
-  .back:
-    popfd;
-    popad;
-    
-    fclex;
-    
-    ;pop saved frame pointer
-    pop ebp
-    
-    mfence
-    
-    
-  mov [dword 0xB8000], dword _CGRE
-  sti;
-
-    iret
-  
-  .cleardebug:
-    
-  pushad;
-  
-  push dword BLACK
-  push dword 101
-  push dword DEBUG_EXC
-  call terminal_set_debug
-  pop eax;
-  pop eax;
-  pop eax;
-  
-  popad;
-
-    jmp .back
+  dec dword [inside_exc]
+  iret
 
 
 ;takes two arguments
@@ -1802,11 +2878,53 @@ _isr_7_message:
 ;special spurious-irq-handling code
 isr_7:
   
+  inc dword [inside_irq]
+  
+  
+  ;save registers
+  pushad
+  pushfd
+  
+  
+  ;calculate character to display
+  mov eax, [inside_irq]
+  add eax, 48 ;add ascii of 0 character
+  
+  ;push arguments
+  push dword 10
+  push eax
+  push dword DEBUG_INSIDEIRQ
+  
+  call terminal_set_debug
+  
+  ;pop arguments
+  add esp, DWSIZE*3
+
+  
+  ;calculate character to display
+  mov eax, [inside_exc]
+  add eax, 48 ;add ascii of 0 character
+  
+  ;push arguments
+  push dword 10
+  push eax
+  push dword DEBUG_INSIDEEXC
+  
+  call terminal_set_debug
+  
+  ;pop arguments
+  add esp, DWSIZE*3
+
+  
+  ;restore registers
+  popfd
+  popad
+
+  
   mfence
   pushad;
   pushfd;
   ;docli;
-  ;inc dword [inside_irq];
   ;dosti;
 
   
@@ -1827,9 +2945,51 @@ isr_7:
   popad;
   mfence
   
+  dec dword [inside_irq]
+  
+  ;save registers
+  pushad
+  pushfd
+  
+  
+  ;calculate character to display
+  mov eax, [inside_irq]
+  add eax, 48 ;add ascii of 0 character
+  
+  ;push arguments
+  push dword 10
+  push eax
+  push dword DEBUG_INSIDEIRQ
+  
+  call terminal_set_debug
+  
+  ;pop arguments
+  add esp, DWSIZE*3
+
+  
+  ;calculate character to display
+  mov eax, [inside_exc]
+  add eax, 48 ;add ascii of 0 character
+  
+  ;push arguments
+  push dword 10
+  push eax
+  push dword DEBUG_INSIDEEXC
+  
+  call terminal_set_debug
+  
+  ;pop arguments
+  add esp, DWSIZE*3
+
+  
+  ;restore registers
+  popfd
+  popad
+
+  
   
   mov [dword 0xB8000], dword _CGRE
-  sti;
+  sti
 
   iret
 
@@ -1840,11 +3000,53 @@ _isr_15_message:
 ;special spurious-irq-handling code
 isr_15:
   
+  inc dword [inside_irq]
+  
+  
+  ;save registers
+  pushad
+  pushfd
+  
+  
+  ;calculate character to display
+  mov eax, [inside_irq]
+  add eax, 48 ;add ascii of 0 character
+  
+  ;push arguments
+  push dword 10
+  push eax
+  push dword DEBUG_INSIDEIRQ
+  
+  call terminal_set_debug
+  
+  ;pop arguments
+  add esp, DWSIZE*3
+
+  
+  ;calculate character to display
+  mov eax, [inside_exc]
+  add eax, 48 ;add ascii of 0 character
+  
+  ;push arguments
+  push dword 10
+  push eax
+  push dword DEBUG_INSIDEEXC
+  
+  call terminal_set_debug
+  
+  ;pop arguments
+  add esp, DWSIZE*3
+
+  
+  ;restore registers
+  popfd
+  popad
+
+  
   mfence
   pushad;
   pushfd;
   ;docli;
-  ;inc dword [inside_irq];
   ;dosti;
 
   
@@ -1865,9 +3067,51 @@ isr_15:
   popad;
   mfence
   
+  dec dword [inside_irq]
+  
+  ;save registers
+  pushad
+  pushfd
+  
+  
+  ;calculate character to display
+  mov eax, [inside_irq]
+  add eax, 48 ;add ascii of 0 character
+  
+  ;push arguments
+  push dword 10
+  push eax
+  push dword DEBUG_INSIDEIRQ
+  
+  call terminal_set_debug
+  
+  ;pop arguments
+  add esp, DWSIZE*3
+
+  
+  ;calculate character to display
+  mov eax, [inside_exc]
+  add eax, 48 ;add ascii of 0 character
+  
+  ;push arguments
+  push dword 10
+  push eax
+  push dword DEBUG_INSIDEEXC
+  
+  call terminal_set_debug
+  
+  ;pop arguments
+  add esp, DWSIZE*3
+
+  
+  ;restore registers
+  popfd
+  popad
+
+  
   
   mov [dword 0xB8000], dword _CGRE
-  sti;
+  sti
 
   iret
 
@@ -1875,11 +3119,53 @@ isr_15:
 ;isr_0: isr_wrapper(          0, PIC1) ;timer
 isr_1 : 
   
+  inc dword [inside_irq]
+  
+  
+  ;save registers
+  pushad
+  pushfd
+  
+  
+  ;calculate character to display
+  mov eax, [inside_irq]
+  add eax, 48 ;add ascii of 0 character
+  
+  ;push arguments
+  push dword 10
+  push eax
+  push dword DEBUG_INSIDEIRQ
+  
+  call terminal_set_debug
+  
+  ;pop arguments
+  add esp, DWSIZE*3
+
+  
+  ;calculate character to display
+  mov eax, [inside_exc]
+  add eax, 48 ;add ascii of 0 character
+  
+  ;push arguments
+  push dword 10
+  push eax
+  push dword DEBUG_INSIDEEXC
+  
+  call terminal_set_debug
+  
+  ;pop arguments
+  add esp, DWSIZE*3
+
+  
+  ;restore registers
+  popfd
+  popad
+
+  
   mfence
   pushad;
   pushfd;
   ;docli;
-  ;inc dword [inside_irq];
   ;dosti;
 
   
@@ -1914,27 +3200,111 @@ isr_1 :
   ;pop ebp  ;frame pointer
   
   mov [dword 0xB8000], dword _CGRE
-  sti;
+  sti
 
   
   popfd;
   popad;
   mfence
   
+  dec dword [inside_irq]
+  
+  ;save registers
+  pushad
+  pushfd
+  
+  
+  ;calculate character to display
+  mov eax, [inside_irq]
+  add eax, 48 ;add ascii of 0 character
+  
+  ;push arguments
+  push dword 10
+  push eax
+  push dword DEBUG_INSIDEIRQ
+  
+  call terminal_set_debug
+  
+  ;pop arguments
+  add esp, DWSIZE*3
+
+  
+  ;calculate character to display
+  mov eax, [inside_exc]
+  add eax, 48 ;add ascii of 0 character
+  
+  ;push arguments
+  push dword 10
+  push eax
+  push dword DEBUG_INSIDEEXC
+  
+  call terminal_set_debug
+  
+  ;pop arguments
+  add esp, DWSIZE*3
+
+  
+  ;restore registers
+  popfd
+  popad
+
+  
   
   mov [dword 0xB8000], dword _CGRE
-  sti;
+  sti
 
   iret
 
  ;keyboard
 isr_2 : 
   
+  inc dword [inside_irq]
+  
+  
+  ;save registers
+  pushad
+  pushfd
+  
+  
+  ;calculate character to display
+  mov eax, [inside_irq]
+  add eax, 48 ;add ascii of 0 character
+  
+  ;push arguments
+  push dword 10
+  push eax
+  push dword DEBUG_INSIDEIRQ
+  
+  call terminal_set_debug
+  
+  ;pop arguments
+  add esp, DWSIZE*3
+
+  
+  ;calculate character to display
+  mov eax, [inside_exc]
+  add eax, 48 ;add ascii of 0 character
+  
+  ;push arguments
+  push dword 10
+  push eax
+  push dword DEBUG_INSIDEEXC
+  
+  call terminal_set_debug
+  
+  ;pop arguments
+  add esp, DWSIZE*3
+
+  
+  ;restore registers
+  popfd
+  popad
+
+  
   mfence
   pushad;
   pushfd;
   ;docli;
-  ;inc dword [inside_irq];
   ;dosti;
 
   
@@ -1960,20 +3330,104 @@ isr_2 :
   popad;
   mfence
   
+  dec dword [inside_irq]
+  
+  ;save registers
+  pushad
+  pushfd
+  
+  
+  ;calculate character to display
+  mov eax, [inside_irq]
+  add eax, 48 ;add ascii of 0 character
+  
+  ;push arguments
+  push dword 10
+  push eax
+  push dword DEBUG_INSIDEIRQ
+  
+  call terminal_set_debug
+  
+  ;pop arguments
+  add esp, DWSIZE*3
+
+  
+  ;calculate character to display
+  mov eax, [inside_exc]
+  add eax, 48 ;add ascii of 0 character
+  
+  ;push arguments
+  push dword 10
+  push eax
+  push dword DEBUG_INSIDEEXC
+  
+  call terminal_set_debug
+  
+  ;pop arguments
+  add esp, DWSIZE*3
+
+  
+  ;restore registers
+  popfd
+  popad
+
+  
   
   mov [dword 0xB8000], dword _CGRE
-  sti;
+  sti
 
   iret
 
 
 isr_3 : 
   
+  inc dword [inside_irq]
+  
+  
+  ;save registers
+  pushad
+  pushfd
+  
+  
+  ;calculate character to display
+  mov eax, [inside_irq]
+  add eax, 48 ;add ascii of 0 character
+  
+  ;push arguments
+  push dword 10
+  push eax
+  push dword DEBUG_INSIDEIRQ
+  
+  call terminal_set_debug
+  
+  ;pop arguments
+  add esp, DWSIZE*3
+
+  
+  ;calculate character to display
+  mov eax, [inside_exc]
+  add eax, 48 ;add ascii of 0 character
+  
+  ;push arguments
+  push dword 10
+  push eax
+  push dword DEBUG_INSIDEEXC
+  
+  call terminal_set_debug
+  
+  ;pop arguments
+  add esp, DWSIZE*3
+
+  
+  ;restore registers
+  popfd
+  popad
+
+  
   mfence
   pushad;
   pushfd;
   ;docli;
-  ;inc dword [inside_irq];
   ;dosti;
 
   
@@ -1999,20 +3453,104 @@ isr_3 :
   popad;
   mfence
   
+  dec dword [inside_irq]
+  
+  ;save registers
+  pushad
+  pushfd
+  
+  
+  ;calculate character to display
+  mov eax, [inside_irq]
+  add eax, 48 ;add ascii of 0 character
+  
+  ;push arguments
+  push dword 10
+  push eax
+  push dword DEBUG_INSIDEIRQ
+  
+  call terminal_set_debug
+  
+  ;pop arguments
+  add esp, DWSIZE*3
+
+  
+  ;calculate character to display
+  mov eax, [inside_exc]
+  add eax, 48 ;add ascii of 0 character
+  
+  ;push arguments
+  push dword 10
+  push eax
+  push dword DEBUG_INSIDEEXC
+  
+  call terminal_set_debug
+  
+  ;pop arguments
+  add esp, DWSIZE*3
+
+  
+  ;restore registers
+  popfd
+  popad
+
+  
   
   mov [dword 0xB8000], dword _CGRE
-  sti;
+  sti
 
   iret
 
 
 isr_4 : 
   
+  inc dword [inside_irq]
+  
+  
+  ;save registers
+  pushad
+  pushfd
+  
+  
+  ;calculate character to display
+  mov eax, [inside_irq]
+  add eax, 48 ;add ascii of 0 character
+  
+  ;push arguments
+  push dword 10
+  push eax
+  push dword DEBUG_INSIDEIRQ
+  
+  call terminal_set_debug
+  
+  ;pop arguments
+  add esp, DWSIZE*3
+
+  
+  ;calculate character to display
+  mov eax, [inside_exc]
+  add eax, 48 ;add ascii of 0 character
+  
+  ;push arguments
+  push dword 10
+  push eax
+  push dword DEBUG_INSIDEEXC
+  
+  call terminal_set_debug
+  
+  ;pop arguments
+  add esp, DWSIZE*3
+
+  
+  ;restore registers
+  popfd
+  popad
+
+  
   mfence
   pushad;
   pushfd;
   ;docli;
-  ;inc dword [inside_irq];
   ;dosti;
 
   
@@ -2038,20 +3576,104 @@ isr_4 :
   popad;
   mfence
   
+  dec dword [inside_irq]
+  
+  ;save registers
+  pushad
+  pushfd
+  
+  
+  ;calculate character to display
+  mov eax, [inside_irq]
+  add eax, 48 ;add ascii of 0 character
+  
+  ;push arguments
+  push dword 10
+  push eax
+  push dword DEBUG_INSIDEIRQ
+  
+  call terminal_set_debug
+  
+  ;pop arguments
+  add esp, DWSIZE*3
+
+  
+  ;calculate character to display
+  mov eax, [inside_exc]
+  add eax, 48 ;add ascii of 0 character
+  
+  ;push arguments
+  push dword 10
+  push eax
+  push dword DEBUG_INSIDEEXC
+  
+  call terminal_set_debug
+  
+  ;pop arguments
+  add esp, DWSIZE*3
+
+  
+  ;restore registers
+  popfd
+  popad
+
+  
   
   mov [dword 0xB8000], dword _CGRE
-  sti;
+  sti
 
   iret
 
 
 isr_5 : 
   
+  inc dword [inside_irq]
+  
+  
+  ;save registers
+  pushad
+  pushfd
+  
+  
+  ;calculate character to display
+  mov eax, [inside_irq]
+  add eax, 48 ;add ascii of 0 character
+  
+  ;push arguments
+  push dword 10
+  push eax
+  push dword DEBUG_INSIDEIRQ
+  
+  call terminal_set_debug
+  
+  ;pop arguments
+  add esp, DWSIZE*3
+
+  
+  ;calculate character to display
+  mov eax, [inside_exc]
+  add eax, 48 ;add ascii of 0 character
+  
+  ;push arguments
+  push dword 10
+  push eax
+  push dword DEBUG_INSIDEEXC
+  
+  call terminal_set_debug
+  
+  ;pop arguments
+  add esp, DWSIZE*3
+
+  
+  ;restore registers
+  popfd
+  popad
+
+  
   mfence
   pushad;
   pushfd;
   ;docli;
-  ;inc dword [inside_irq];
   ;dosti;
 
   
@@ -2077,20 +3699,104 @@ isr_5 :
   popad;
   mfence
   
+  dec dword [inside_irq]
+  
+  ;save registers
+  pushad
+  pushfd
+  
+  
+  ;calculate character to display
+  mov eax, [inside_irq]
+  add eax, 48 ;add ascii of 0 character
+  
+  ;push arguments
+  push dword 10
+  push eax
+  push dword DEBUG_INSIDEIRQ
+  
+  call terminal_set_debug
+  
+  ;pop arguments
+  add esp, DWSIZE*3
+
+  
+  ;calculate character to display
+  mov eax, [inside_exc]
+  add eax, 48 ;add ascii of 0 character
+  
+  ;push arguments
+  push dword 10
+  push eax
+  push dword DEBUG_INSIDEEXC
+  
+  call terminal_set_debug
+  
+  ;pop arguments
+  add esp, DWSIZE*3
+
+  
+  ;restore registers
+  popfd
+  popad
+
+  
   
   mov [dword 0xB8000], dword _CGRE
-  sti;
+  sti
 
   iret
 
 
 isr_6 : 
   
+  inc dword [inside_irq]
+  
+  
+  ;save registers
+  pushad
+  pushfd
+  
+  
+  ;calculate character to display
+  mov eax, [inside_irq]
+  add eax, 48 ;add ascii of 0 character
+  
+  ;push arguments
+  push dword 10
+  push eax
+  push dword DEBUG_INSIDEIRQ
+  
+  call terminal_set_debug
+  
+  ;pop arguments
+  add esp, DWSIZE*3
+
+  
+  ;calculate character to display
+  mov eax, [inside_exc]
+  add eax, 48 ;add ascii of 0 character
+  
+  ;push arguments
+  push dword 10
+  push eax
+  push dword DEBUG_INSIDEEXC
+  
+  call terminal_set_debug
+  
+  ;pop arguments
+  add esp, DWSIZE*3
+
+  
+  ;restore registers
+  popfd
+  popad
+
+  
   mfence
   pushad;
   pushfd;
   ;docli;
-  ;inc dword [inside_irq];
   ;dosti;
 
   
@@ -2116,9 +3822,51 @@ isr_6 :
   popad;
   mfence
   
+  dec dword [inside_irq]
+  
+  ;save registers
+  pushad
+  pushfd
+  
+  
+  ;calculate character to display
+  mov eax, [inside_irq]
+  add eax, 48 ;add ascii of 0 character
+  
+  ;push arguments
+  push dword 10
+  push eax
+  push dword DEBUG_INSIDEIRQ
+  
+  call terminal_set_debug
+  
+  ;pop arguments
+  add esp, DWSIZE*3
+
+  
+  ;calculate character to display
+  mov eax, [inside_exc]
+  add eax, 48 ;add ascii of 0 character
+  
+  ;push arguments
+  push dword 10
+  push eax
+  push dword DEBUG_INSIDEEXC
+  
+  call terminal_set_debug
+  
+  ;pop arguments
+  add esp, DWSIZE*3
+
+  
+  ;restore registers
+  popfd
+  popad
+
+  
   
   mov [dword 0xB8000], dword _CGRE
-  sti;
+  sti
 
   iret
 
@@ -2126,11 +3874,53 @@ isr_6 :
 ;isr_7 : isr_wrapper(          7, PIC1 ;spurious irq
 isr_8 : 
   
+  inc dword [inside_irq]
+  
+  
+  ;save registers
+  pushad
+  pushfd
+  
+  
+  ;calculate character to display
+  mov eax, [inside_irq]
+  add eax, 48 ;add ascii of 0 character
+  
+  ;push arguments
+  push dword 10
+  push eax
+  push dword DEBUG_INSIDEIRQ
+  
+  call terminal_set_debug
+  
+  ;pop arguments
+  add esp, DWSIZE*3
+
+  
+  ;calculate character to display
+  mov eax, [inside_exc]
+  add eax, 48 ;add ascii of 0 character
+  
+  ;push arguments
+  push dword 10
+  push eax
+  push dword DEBUG_INSIDEEXC
+  
+  call terminal_set_debug
+  
+  ;pop arguments
+  add esp, DWSIZE*3
+
+  
+  ;restore registers
+  popfd
+  popad
+
+  
   mfence
   pushad;
   pushfd;
   ;docli;
-  ;inc dword [inside_irq];
   ;dosti;
 
   
@@ -2156,20 +3946,104 @@ isr_8 :
   popad;
   mfence
   
+  dec dword [inside_irq]
+  
+  ;save registers
+  pushad
+  pushfd
+  
+  
+  ;calculate character to display
+  mov eax, [inside_irq]
+  add eax, 48 ;add ascii of 0 character
+  
+  ;push arguments
+  push dword 10
+  push eax
+  push dword DEBUG_INSIDEIRQ
+  
+  call terminal_set_debug
+  
+  ;pop arguments
+  add esp, DWSIZE*3
+
+  
+  ;calculate character to display
+  mov eax, [inside_exc]
+  add eax, 48 ;add ascii of 0 character
+  
+  ;push arguments
+  push dword 10
+  push eax
+  push dword DEBUG_INSIDEEXC
+  
+  call terminal_set_debug
+  
+  ;pop arguments
+  add esp, DWSIZE*3
+
+  
+  ;restore registers
+  popfd
+  popad
+
+  
   
   mov [dword 0xB8000], dword _CGRE
-  sti;
+  sti
 
   iret
 
 
 isr_9 : 
   
+  inc dword [inside_irq]
+  
+  
+  ;save registers
+  pushad
+  pushfd
+  
+  
+  ;calculate character to display
+  mov eax, [inside_irq]
+  add eax, 48 ;add ascii of 0 character
+  
+  ;push arguments
+  push dword 10
+  push eax
+  push dword DEBUG_INSIDEIRQ
+  
+  call terminal_set_debug
+  
+  ;pop arguments
+  add esp, DWSIZE*3
+
+  
+  ;calculate character to display
+  mov eax, [inside_exc]
+  add eax, 48 ;add ascii of 0 character
+  
+  ;push arguments
+  push dword 10
+  push eax
+  push dword DEBUG_INSIDEEXC
+  
+  call terminal_set_debug
+  
+  ;pop arguments
+  add esp, DWSIZE*3
+
+  
+  ;restore registers
+  popfd
+  popad
+
+  
   mfence
   pushad;
   pushfd;
   ;docli;
-  ;inc dword [inside_irq];
   ;dosti;
 
   
@@ -2195,20 +4069,104 @@ isr_9 :
   popad;
   mfence
   
+  dec dword [inside_irq]
+  
+  ;save registers
+  pushad
+  pushfd
+  
+  
+  ;calculate character to display
+  mov eax, [inside_irq]
+  add eax, 48 ;add ascii of 0 character
+  
+  ;push arguments
+  push dword 10
+  push eax
+  push dword DEBUG_INSIDEIRQ
+  
+  call terminal_set_debug
+  
+  ;pop arguments
+  add esp, DWSIZE*3
+
+  
+  ;calculate character to display
+  mov eax, [inside_exc]
+  add eax, 48 ;add ascii of 0 character
+  
+  ;push arguments
+  push dword 10
+  push eax
+  push dword DEBUG_INSIDEEXC
+  
+  call terminal_set_debug
+  
+  ;pop arguments
+  add esp, DWSIZE*3
+
+  
+  ;restore registers
+  popfd
+  popad
+
+  
   
   mov [dword 0xB8000], dword _CGRE
-  sti;
+  sti
 
   iret
 
 
 isr_10: 
   
+  inc dword [inside_irq]
+  
+  
+  ;save registers
+  pushad
+  pushfd
+  
+  
+  ;calculate character to display
+  mov eax, [inside_irq]
+  add eax, 48 ;add ascii of 0 character
+  
+  ;push arguments
+  push dword 10
+  push eax
+  push dword DEBUG_INSIDEIRQ
+  
+  call terminal_set_debug
+  
+  ;pop arguments
+  add esp, DWSIZE*3
+
+  
+  ;calculate character to display
+  mov eax, [inside_exc]
+  add eax, 48 ;add ascii of 0 character
+  
+  ;push arguments
+  push dword 10
+  push eax
+  push dword DEBUG_INSIDEEXC
+  
+  call terminal_set_debug
+  
+  ;pop arguments
+  add esp, DWSIZE*3
+
+  
+  ;restore registers
+  popfd
+  popad
+
+  
   mfence
   pushad;
   pushfd;
   ;docli;
-  ;inc dword [inside_irq];
   ;dosti;
 
   
@@ -2234,20 +4192,104 @@ isr_10:
   popad;
   mfence
   
+  dec dword [inside_irq]
+  
+  ;save registers
+  pushad
+  pushfd
+  
+  
+  ;calculate character to display
+  mov eax, [inside_irq]
+  add eax, 48 ;add ascii of 0 character
+  
+  ;push arguments
+  push dword 10
+  push eax
+  push dword DEBUG_INSIDEIRQ
+  
+  call terminal_set_debug
+  
+  ;pop arguments
+  add esp, DWSIZE*3
+
+  
+  ;calculate character to display
+  mov eax, [inside_exc]
+  add eax, 48 ;add ascii of 0 character
+  
+  ;push arguments
+  push dword 10
+  push eax
+  push dword DEBUG_INSIDEEXC
+  
+  call terminal_set_debug
+  
+  ;pop arguments
+  add esp, DWSIZE*3
+
+  
+  ;restore registers
+  popfd
+  popad
+
+  
   
   mov [dword 0xB8000], dword _CGRE
-  sti;
+  sti
 
   iret
 
 
 isr_11: 
   
+  inc dword [inside_irq]
+  
+  
+  ;save registers
+  pushad
+  pushfd
+  
+  
+  ;calculate character to display
+  mov eax, [inside_irq]
+  add eax, 48 ;add ascii of 0 character
+  
+  ;push arguments
+  push dword 10
+  push eax
+  push dword DEBUG_INSIDEIRQ
+  
+  call terminal_set_debug
+  
+  ;pop arguments
+  add esp, DWSIZE*3
+
+  
+  ;calculate character to display
+  mov eax, [inside_exc]
+  add eax, 48 ;add ascii of 0 character
+  
+  ;push arguments
+  push dword 10
+  push eax
+  push dword DEBUG_INSIDEEXC
+  
+  call terminal_set_debug
+  
+  ;pop arguments
+  add esp, DWSIZE*3
+
+  
+  ;restore registers
+  popfd
+  popad
+
+  
   mfence
   pushad;
   pushfd;
   ;docli;
-  ;inc dword [inside_irq];
   ;dosti;
 
   
@@ -2273,20 +4315,104 @@ isr_11:
   popad;
   mfence
   
+  dec dword [inside_irq]
+  
+  ;save registers
+  pushad
+  pushfd
+  
+  
+  ;calculate character to display
+  mov eax, [inside_irq]
+  add eax, 48 ;add ascii of 0 character
+  
+  ;push arguments
+  push dword 10
+  push eax
+  push dword DEBUG_INSIDEIRQ
+  
+  call terminal_set_debug
+  
+  ;pop arguments
+  add esp, DWSIZE*3
+
+  
+  ;calculate character to display
+  mov eax, [inside_exc]
+  add eax, 48 ;add ascii of 0 character
+  
+  ;push arguments
+  push dword 10
+  push eax
+  push dword DEBUG_INSIDEEXC
+  
+  call terminal_set_debug
+  
+  ;pop arguments
+  add esp, DWSIZE*3
+
+  
+  ;restore registers
+  popfd
+  popad
+
+  
   
   mov [dword 0xB8000], dword _CGRE
-  sti;
+  sti
 
   iret
 
 
 isr_12: 
   
+  inc dword [inside_irq]
+  
+  
+  ;save registers
+  pushad
+  pushfd
+  
+  
+  ;calculate character to display
+  mov eax, [inside_irq]
+  add eax, 48 ;add ascii of 0 character
+  
+  ;push arguments
+  push dword 10
+  push eax
+  push dword DEBUG_INSIDEIRQ
+  
+  call terminal_set_debug
+  
+  ;pop arguments
+  add esp, DWSIZE*3
+
+  
+  ;calculate character to display
+  mov eax, [inside_exc]
+  add eax, 48 ;add ascii of 0 character
+  
+  ;push arguments
+  push dword 10
+  push eax
+  push dword DEBUG_INSIDEEXC
+  
+  call terminal_set_debug
+  
+  ;pop arguments
+  add esp, DWSIZE*3
+
+  
+  ;restore registers
+  popfd
+  popad
+
+  
   mfence
   pushad;
   pushfd;
   ;docli;
-  ;inc dword [inside_irq];
   ;dosti;
 
   
@@ -2312,20 +4438,104 @@ isr_12:
   popad;
   mfence
   
+  dec dword [inside_irq]
+  
+  ;save registers
+  pushad
+  pushfd
+  
+  
+  ;calculate character to display
+  mov eax, [inside_irq]
+  add eax, 48 ;add ascii of 0 character
+  
+  ;push arguments
+  push dword 10
+  push eax
+  push dword DEBUG_INSIDEIRQ
+  
+  call terminal_set_debug
+  
+  ;pop arguments
+  add esp, DWSIZE*3
+
+  
+  ;calculate character to display
+  mov eax, [inside_exc]
+  add eax, 48 ;add ascii of 0 character
+  
+  ;push arguments
+  push dword 10
+  push eax
+  push dword DEBUG_INSIDEEXC
+  
+  call terminal_set_debug
+  
+  ;pop arguments
+  add esp, DWSIZE*3
+
+  
+  ;restore registers
+  popfd
+  popad
+
+  
   
   mov [dword 0xB8000], dword _CGRE
-  sti;
+  sti
 
   iret
 
 
 isr_13: 
   
+  inc dword [inside_irq]
+  
+  
+  ;save registers
+  pushad
+  pushfd
+  
+  
+  ;calculate character to display
+  mov eax, [inside_irq]
+  add eax, 48 ;add ascii of 0 character
+  
+  ;push arguments
+  push dword 10
+  push eax
+  push dword DEBUG_INSIDEIRQ
+  
+  call terminal_set_debug
+  
+  ;pop arguments
+  add esp, DWSIZE*3
+
+  
+  ;calculate character to display
+  mov eax, [inside_exc]
+  add eax, 48 ;add ascii of 0 character
+  
+  ;push arguments
+  push dword 10
+  push eax
+  push dword DEBUG_INSIDEEXC
+  
+  call terminal_set_debug
+  
+  ;pop arguments
+  add esp, DWSIZE*3
+
+  
+  ;restore registers
+  popfd
+  popad
+
+  
   mfence
   pushad;
   pushfd;
   ;docli;
-  ;inc dword [inside_irq];
   ;dosti;
 
   
@@ -2351,20 +4561,104 @@ isr_13:
   popad;
   mfence
   
+  dec dword [inside_irq]
+  
+  ;save registers
+  pushad
+  pushfd
+  
+  
+  ;calculate character to display
+  mov eax, [inside_irq]
+  add eax, 48 ;add ascii of 0 character
+  
+  ;push arguments
+  push dword 10
+  push eax
+  push dword DEBUG_INSIDEIRQ
+  
+  call terminal_set_debug
+  
+  ;pop arguments
+  add esp, DWSIZE*3
+
+  
+  ;calculate character to display
+  mov eax, [inside_exc]
+  add eax, 48 ;add ascii of 0 character
+  
+  ;push arguments
+  push dword 10
+  push eax
+  push dword DEBUG_INSIDEEXC
+  
+  call terminal_set_debug
+  
+  ;pop arguments
+  add esp, DWSIZE*3
+
+  
+  ;restore registers
+  popfd
+  popad
+
+  
   
   mov [dword 0xB8000], dword _CGRE
-  sti;
+  sti
 
   iret
 
 
 isr_14: 
   
+  inc dword [inside_irq]
+  
+  
+  ;save registers
+  pushad
+  pushfd
+  
+  
+  ;calculate character to display
+  mov eax, [inside_irq]
+  add eax, 48 ;add ascii of 0 character
+  
+  ;push arguments
+  push dword 10
+  push eax
+  push dword DEBUG_INSIDEIRQ
+  
+  call terminal_set_debug
+  
+  ;pop arguments
+  add esp, DWSIZE*3
+
+  
+  ;calculate character to display
+  mov eax, [inside_exc]
+  add eax, 48 ;add ascii of 0 character
+  
+  ;push arguments
+  push dword 10
+  push eax
+  push dword DEBUG_INSIDEEXC
+  
+  call terminal_set_debug
+  
+  ;pop arguments
+  add esp, DWSIZE*3
+
+  
+  ;restore registers
+  popfd
+  popad
+
+  
   mfence
   pushad;
   pushfd;
   ;docli;
-  ;inc dword [inside_irq];
   ;dosti;
 
   
@@ -2390,9 +4684,51 @@ isr_14:
   popad;
   mfence
   
+  dec dword [inside_irq]
+  
+  ;save registers
+  pushad
+  pushfd
+  
+  
+  ;calculate character to display
+  mov eax, [inside_irq]
+  add eax, 48 ;add ascii of 0 character
+  
+  ;push arguments
+  push dword 10
+  push eax
+  push dword DEBUG_INSIDEIRQ
+  
+  call terminal_set_debug
+  
+  ;pop arguments
+  add esp, DWSIZE*3
+
+  
+  ;calculate character to display
+  mov eax, [inside_exc]
+  add eax, 48 ;add ascii of 0 character
+  
+  ;push arguments
+  push dword 10
+  push eax
+  push dword DEBUG_INSIDEEXC
+  
+  call terminal_set_debug
+  
+  ;pop arguments
+  add esp, DWSIZE*3
+
+  
+  ;restore registers
+  popfd
+  popad
+
+  
   
   mov [dword 0xB8000], dword _CGRE
-  sti;
+  sti
 
   iret
 
@@ -2559,6 +4895,47 @@ raw_next_task:
   
 isr_0:
 ;  isr0_debug_stack()
+  inc dword [inside_irq]
+  
+  ;save registers
+  pushad
+  pushfd
+  
+  
+  ;calculate character to display
+  mov eax, [inside_irq]
+  add eax, 48 ;add ascii of 0 character
+  
+  ;push arguments
+  push dword 10
+  push eax
+  push dword DEBUG_INSIDEIRQ
+  
+  call terminal_set_debug
+  
+  ;pop arguments
+  add esp, DWSIZE*3
+
+  
+  ;calculate character to display
+  mov eax, [inside_exc]
+  add eax, 48 ;add ascii of 0 character
+  
+  ;push arguments
+  push dword 10
+  push eax
+  push dword DEBUG_INSIDEEXC
+  
+  call terminal_set_debug
+  
+  ;pop arguments
+  add esp, DWSIZE*3
+
+  
+  ;restore registers
+  popfd
+  popad
+
   
   ;increment tick counter
   extern kernel_tick;
@@ -2569,6 +4946,7 @@ isr_0:
   pushad;
 
 
+  ;save stack
   mov eax, dword [k_curtaskp];
   mov dword [eax], esp;
   
@@ -2577,6 +4955,7 @@ isr_0:
   add eax, DWSIZE;
   mov eax, [eax];
   mov dword [k_curtaskp], eax
+  
   mov esp, [eax];
   
   ;set_debug_char(DEBUG_ISR00, 105, GREEN)
@@ -2616,6 +4995,48 @@ isr_0:
   
   ;restore eax
   pop eax;
+
+  
+  dec dword [inside_irq]
+  
+  ;save registers
+  pushad
+  pushfd
+  
+  
+  ;calculate character to display
+  mov eax, [inside_irq]
+  add eax, 48 ;add ascii of 0 character
+  
+  ;push arguments
+  push dword 10
+  push eax
+  push dword DEBUG_INSIDEIRQ
+  
+  call terminal_set_debug
+  
+  ;pop arguments
+  add esp, DWSIZE*3
+
+  
+  ;calculate character to display
+  mov eax, [inside_exc]
+  add eax, 48 ;add ascii of 0 character
+  
+  ;push arguments
+  push dword 10
+  push eax
+  push dword DEBUG_INSIDEEXC
+  
+  call terminal_set_debug
+  
+  ;pop arguments
+  add esp, DWSIZE*3
+
+  
+  ;restore registers
+  popfd
+  popad
 
   
   sti
@@ -2730,7 +5151,7 @@ isr_00:
 
   
   mov [dword 0xB8000], dword _CGRE
-  sti;
+  sti
 
   iret
   
@@ -2764,7 +5185,7 @@ __initdTask3: align 8
   ;enable interrupts again
   
   mov [dword 0xB8000], dword _CGRE
-  sti;
+  sti
 ;
   ret;
 
@@ -2776,7 +5197,7 @@ _thread_ctx_push:
   
   mov ebp, esp;
   
-  mov eax, [esp + DWSIZE]; stack pointer
+  mov eax, [ebp + DWSIZE]; stack pointer
   
   ;save old stack for later
   mov ecx, esp;
@@ -2829,7 +5250,7 @@ __initTask3: align 8
   ;eflags, required by interrupt handler
   pushfd
   
-  ;mask out interrupt flag
+  ;ensure interrupts are enabled in eflags
   mov eax, [esp]
   or eax, (1<<9)
   mov [esp], eax;
@@ -2860,7 +5281,7 @@ __initTask3: align 8
   ;enable interrupts again
   
   mov [dword 0xB8000], dword _CGRE
-  sti;
+  sti
 ;
   ret;
     
@@ -2875,6 +5296,12 @@ task_yield:
   mov [dword 0xB8000], dword _CLGN ; _CRED
 
   
+  ;check if we're inside an irq or exception handler
+  ;mov eax, 0
+  ;add eax, dword [inside_irq]
+  ;add eax, dword [inside_exc]
+  ;jnz .inside_irq_exc
+  
   ;set up irq-compatible far call: eflags, segment, return pointer.
   pushfd
   
@@ -2885,36 +5312,44 @@ task_yield:
   
   call 0x08:__switchTask
   ret
-  
+    
+  .inside_irq_exc:
+    ;do nothing
+    
+    ret
+    
 ;dw __switchTask, seg __switchTask
 __switchTask:
   ;argument
   
   
+  
   pushfd;
   pushad;
-;
+
   
   ;save stack
-  mov eax, dword [k_curtaskp];
-  mov dword [eax], esp;
+  mov eax, dword [k_curtaskp]
+  mov dword [eax], esp
   
   ;move to next task
   mov eax, [k_curtaskp]
-  add eax, DWSIZE;
-  mov eax, [eax];
+  add eax, DWSIZE
+  mov eax, [eax]
   mov dword [k_curtaskp], eax
   
   ;set stack
-  mov esp, [eax];
+  mov esp, [eax]
   
   
   popad;
   popfd;
-;
+
+
+  
   
   mov [dword 0xB8000], dword _CGRE
-  sti;
+  sti
 ;
   
   ;emulate IRQ far return, which pops

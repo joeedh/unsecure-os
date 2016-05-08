@@ -498,7 +498,8 @@ void emergency_proc_exit_cb() {
 
 void emergency_proc_exit() {
   e9printf("preinterrupt eip: %x, esp: %x\n", get_eip(), read_esp());
-  thread_interrupt(k_curtaskp->tid, emergency_proc_exit_cb);
+  //task_interrupt(k_curtaskp->tid, emergency_proc_exit_cb);
+  _exit(-1);
 }
 
 static int proc_stop_task(int argc, char **argv) {

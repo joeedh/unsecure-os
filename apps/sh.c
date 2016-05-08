@@ -4,6 +4,7 @@
 
 #include "spawn.h"
 #include "wait.h"
+
 #include "keyboard.h"
 
 #include "unistd.h"
@@ -20,6 +21,48 @@
 
 //just include the stupid list implementation in the kernel
 #include "../kernel/libc/list.c"
+
+
+int stty_line_mode() {
+  int lflag=0;
+  
+  ioctl(stdin->fd, TCGET_LOCALFLAG, (intptr_t)&lflag);
+  lflag |= ECHO;
+  ioctl(stdin->fd, TCSET_LOCALFLAG, lflag);
+  
+  //turn on line editing mode for child processes
+  ioctl(stdin->fd, TCSET_BUFM, BUFM_LINE);
+}
+
+int stty_raw_mode() {
+  int lflag=0;
+  
+  ioctl(stdin->fd, TCGET_LOCALFLAG, (intptr_t)&lflag);
+  lflag &= ~ECHO;
+  ioctl(stdin->fd, TCSET_LOCALFLAG, lflag);
+  
+  //turn on raw mode for command line editing, which shell buffers itself
+  ioctl(stdin->fd, TCSET_BUFM, BUFM_RAW);  
+}
+
+static int _lflag, _bufm;
+static void stty_save_mode() {
+  ioctl(stdin->fd, TCGET_LOCALFLAG, (intptr_t)&_lflag);
+  ioctl(stdin->fd, TCGET_BUFM, (intptr_t)&_bufm);
+}
+
+static void stty_restore_mode() {
+  ioctl(stdin->fd, TCSET_LOCALFLAG, (intptr_t)_lflag);
+  ioctl(stdin->fd, TCSET_BUFM, (intptr_t)_bufm);
+}
+
+int mygetc(FILE *file) {
+  while (feof(file)) {
+    task_yield();
+  }
+  
+  return fgetc(file);
+}
 
 int startswith(const char *str, const char *name) {
   char *a = (char*) str;
@@ -380,6 +423,7 @@ int commandexec_spawn(ShellState *state, int argc, char **argv) {
   
   extern char **environ;
   
+  stty_save_mode();
   stty_line_mode();
   
   int ret = posix_spawn(&pid, binpath, NULL, NULL, argv, environ);
@@ -432,33 +476,12 @@ int history_add(ShellState *state, char *command) {
   return 0;
 }
 
-int stty_line_mode() {
-  int lflag=0;
-  
-  ioctl(stdin->fd, TCGET_LOCALFLAG, (intptr_t)&lflag);
-  lflag |= ECHO;
-  ioctl(stdin->fd, TCSET_LOCALFLAG, lflag);
-  
-  //turn on line editing mode for child processes
-  ioctl(stdin->fd, TCSET_BUFM, BUFM_LINE);
-}
-
-int stty_raw_mode() {
-  int lflag=0;
-  
-  ioctl(stdin->fd, TCGET_LOCALFLAG, (intptr_t)&lflag);
-  lflag &= ~ECHO;
-  ioctl(stdin->fd, TCSET_LOCALFLAG, lflag);
-  
-  //turn on raw mode for command line editing, which shell buffers itself
-  ioctl(stdin->fd, TCSET_BUFM, BUFM_RAW);  
-}
-
 int interactive(ShellState *state, int argc, char **argv) {
   printprompt(state);
   
   //shell echos itself during command editing mode
   stty_raw_mode();
+  stty_save_mode();
   
   while (1)  {
     task_yield();
@@ -467,14 +490,13 @@ int interactive(ShellState *state, int argc, char **argv) {
       int status;
       
       if (waitpid(state->blocking_proc->pid, &status, WNOHANG) == state->blocking_proc->pid) {
-        stty_raw_mode();
+        stty_restore_mode();
         
         state->blocking_proc = NULL;
         printprompt(state);
       }
     }
     
-    //short code = (short)keyboard_poll();
     short code = -1;
     
     if (!feof(stdin)) {
@@ -491,8 +513,6 @@ int interactive(ShellState *state, int argc, char **argv) {
     //e9printf("bleh\n");
     
     if (isprint(ch) || ch == '\r' || ch == '\n' || ch == '\t') {
-      //ch = keyboard_handle_case(ch);
-      
       if (state->pipe != NULL) {
         fputc(ch, state->pipe);
         
@@ -580,6 +600,45 @@ int interactive(ShellState *state, int argc, char **argv) {
         state->historyflag = 0;
       }
     } else {
+      if (ch == 27) { //escape key
+        int a, b, c, d;
+        
+        a = mygetc(stdin);
+        
+        if (a == '[') {
+          b = mygetc(stdin);
+          switch (b) {
+            case 'A':
+              ch = KEY_UP;
+              break;
+            case 'B':
+              ch = KEY_DOWN;
+              break;
+            case 'C':
+              ch = KEY_RIGHT;
+              break;
+            case 'D':
+              ch = KEY_LEFT;
+              break;
+            case '5':
+              b = mygetc(stdin);
+              if (b == '~') {
+                ch = KEY_PAGEUP;
+              }
+              break;
+            case '6':
+              b = mygetc(stdin);
+              if (b == '~') {
+                ch = KEY_PAGEDOWN;
+              }
+              break;
+            case 'H':
+              //ch = KEY_HOME;
+              break;
+          }
+        }
+      }
+      
       switch (ch) {
         case KEY_LEFT: {
           if (state->cursorx > 0) {
@@ -605,6 +664,7 @@ int interactive(ShellState *state, int argc, char **argv) {
           break;
         case KEY_DELETE:
           break;
+        case '\x7F':
         case '\b': {
           if (state->cursorx > 0) {
             for (int i=state->cursorx; i<state->commandlen-1; i++) {
@@ -621,6 +681,7 @@ int interactive(ShellState *state, int argc, char **argv) {
           break;
         }
         case KEY_PAGEUP:
+          //printf("\33[\x0fS");
           fputc(27, stdout);
           fputc('[', stdout);
           fputc(15, stdout);

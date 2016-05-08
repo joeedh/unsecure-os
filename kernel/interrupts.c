@@ -10,8 +10,7 @@
 
 #include "io.h"
 #include "interrupts.h"
-
-volatile unsigned int inside_irq;
+#include "exception.h"
 
 /*
 The PIC has an internal register called the IMR, or the Interrupt Mask Register. It is 8 bits wide. 
@@ -148,62 +147,7 @@ static inline int e9printinfo() {
   return 0;
 }
 
-volatile int last_irq = 0;
-
-#define EXC_HANDLE(n) \
-extern void exr_##n();\
-void _exc_handler##n(unsigned int flag, uintptr_t eip, uintptr_t code, uintptr_t *ebp) {\
-  _cpu_exception_flag |= 1<<n;\
-  kprintf("====Got exception " #n "=====\n");\
-  e9printf("====Got exception " #n "=====\n");\
-\
-  kprintf("eip: %x, code: %x | %x %x %x\n", eip, code, ebp[0], ebp[1], ebp[2]);\
-  e9printf("eip: %x, code: %x | %x %x %x\n", eip, code, ebp[0], ebp[1], ebp[2]);\
-}
-
-#define KILLPROC_EXCEPTION(n) \
-extern void exr_##n();\
-void _exc_handler##n(unsigned int flag, uintptr_t eip, uintptr_t code, uintptr_t *ebp) {\
-  _cpu_exception_flag |= flag;\
-  kprintf("====Got exception " #n "=====\n");\
-  e9printf("====Got exception " #n "=====\n");\
-\
-  kprintf("eip: %x, code: %x | %x %x %x\n", eip, code, ebp[0], ebp[1], ebp[2]);\
-  e9printf("eip: %x, code: %x | %x %x %x\n", eip, code, ebp[0], ebp[1], ebp[2]);\
-\
-  e9printinfo();\
-  emergency_proc_exit();\
-}
-
-#define DEATH_EXCEPTION(n) \
-extern void exr_##n();\
-void _exc_handler##n(unsigned int flag, uintptr_t eip, uintptr_t code, uintptr_t *ebp) {\
-  _cpu_exception_flag |= flag;\
-  kprintf("====Got exception " #n "=====\n");\
-  e9printf("====Got exception " #n "=====\n");\
-\
-  kprintf("eip: %x, code: %x | %x %x %x\n", eip, code, ebp[0], ebp[1], ebp[2]);\
-  e9printf("eip: %x, code: %x | %x %x %x\n", eip, code, ebp[0], ebp[1], ebp[2]);\
-\
-  e9printinfo();\
-  kerror(n, "Got exception " #n);\
-  e9printinfo();\
-}
-
-#define WARN_EXCEPTION(n) \
-extern void exr_##n();\
-void _exc_handler##n(unsigned int flag, uintptr_t eip, uintptr_t code, uintptr_t *ebp) {\
-  _cpu_exception_flag |= flag;\
-  kprintf("====Got exception " #n "=====\n");\
-  e9printf("====Got exception " #n "=====\n");\
-\
-  kprintf("eip: %x, code: %x | %x %x %x\n", eip, code, ebp[0], ebp[1], ebp[2]);\
-  e9printf("eip: %x, code: %x | %x %x %x\n", eip, code, ebp[0], ebp[1], ebp[2]);\
-\
-  kerror(n, "Got exception " #n);\
-  e9printinfo();\
-}
-
+/*
 KILLPROC_EXCEPTION(0); //divide by zero      #DE
 
 EXC_HANDLE(1); //debug                       #DB
@@ -224,30 +168,37 @@ WARN_EXCEPTION(15); //reserved
 WARN_EXCEPTION(16); //x87 fpu except pending #MF
 WARN_EXCEPTION(17); //alignment error        #AC
 WARN_EXCEPTION(18); //machine check          #MC
+*/
+
+extern void exr_0();
+extern void exr_1();
+extern void exr_2();
+extern void exr_3();
+extern void exr_4();
+extern void exr_5();
+extern void exr_6();
+extern void exr_7();
+extern void exr_8();
+extern void exr_9();
+extern void exr_10();
+extern void exr_11();
+extern void exr_12();
+extern void exr_13();
+extern void exr_14();
+extern void exr_15();
+extern void exr_16();
+extern void exr_17();
+extern void exr_18();
 
 void *excptrs[] = {
-  exr_0,
-  exr_1,
-  exr_2,
-  exr_3,
-  exr_4,
-  exr_5,
-  exr_6,
-  exr_7,
-  exr_8,
-  exr_9,
-  exr_10,
-  exr_11,
-  exr_12,
-  exr_13,
-  exr_14,
-  exr_15,
-  exr_16,
-  exr_17,
-  exr_18
+  exr_0, exr_1, exr_2, exr_3,
+  exr_4, exr_5, exr_6, exr_7,
+  exr_8, exr_9, exr_10, exr_11,
+  exr_12, exr_13, exr_14, exr_15,
+  exr_16, exr_17, exr_18
 };
 
-#define tot_excptrs 14 //((int)(sizeof(excptrs) / sizeof(void*)))
+#define tot_excptrs 19 //((int)(sizeof(excptrs) / sizeof(void*)))
 
 #define ISR_HANDLE(n) void _isr_handler##n() {\
 }
@@ -281,7 +232,7 @@ extern int tot_idtptrs;
 #define PIC_REMAP_OFFSET  32
 
 void interrupts_initialize() {
-  inside_irq = 0;
+  inside_irq = inside_exc = 0;
   
   interrupts_disable(); //disable interrupts
   
@@ -338,6 +289,10 @@ void interrupts_initialize() {
     idt_table[i].should_be_set = 1;
   }
 
+  //set up exception handlers
+  exception_init_stacks();
+  //set up default exception handlers
+  exception_handlers_init();
   
   _setIRT();
 }

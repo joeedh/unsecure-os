@@ -9,8 +9,8 @@ i686-elf-gcc -c _tinyext2_fs.c
 
 echo "link kernel. . ."
 i686-elf-gcc -DINIT_SECTION_ASM_OP=.init -fno-omit-frame-pointer -funsigned-char -T linker.ld -o build/kernel.bin core_x86.o timer.o gdt.o kernel_main.o bootinfo.o \
-                                             interrupt_pointers.o interrupts.o fpu.o libk.o list.o task.o process.o\
-                                             SudoBios.o framebuffer.o vesa.o framebuffer_tty.o shm.o shm_file.o\
+                                             interrupt_pointers.o interrupts.o fpu.o libk.o list.o task.o process.o exception.o signal.o\
+                                             exception_handlers.o SudoBios.o framebuffer.o vesa.o framebuffer_tty.o shm.o shm_file.o\
                                              kmalloc.o printf.o tty.o keyboard.o memblock.o memory_file.o\
                                              mempipe.o fs_procfs.o fs_vfstable.o ioctl.o termios.o \
                                              ext2.o blockdevice.o libc.o syscalls.o sprintf.o string.o dmesg.o \

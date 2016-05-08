@@ -20,7 +20,7 @@
 #endif
 
 typedef struct TTYBuffer {
-  unsigned short * volatile buffer, *buffer_out;
+  unsigned short * volatile buffer, * volatile buffer_out;
   unsigned char * volatile linelasts; //last column of each line
 
   int width, height, scrolly, scrolly_off;
@@ -259,6 +259,9 @@ static void tty_save_alternate(TTYBuffer *tty) {
     
     tty->alt->buffer = kmalloc(tty->width*tty->height*2);
     tty->alt->linelasts = kmalloc(tty->height*2);
+    
+    memset(tty->alt->buffer, 0, tty->width*tty->height*2);
+    memset(tty->alt->linelasts, 0, tty->height*2);
   }
   
   tty->alt->cursorx = tty->cursorx;
@@ -271,8 +274,35 @@ static void tty_save_alternate(TTYBuffer *tty) {
   tty->alt->bg = tty->bg;
   tty->alt->intensity = tty->intensity;
   
-  memcpy(tty->alt->buffer, tty->buffer, tty->width*tty->height*2);
-  memcpy(tty->alt->linelasts, tty->linelasts, tty->height);
+  memset(tty->alt->buffer, 0, tty->width*tty->height*2);
+  memset(tty->alt->linelasts, 0, tty->height*2);
+  //memcpy(tty->alt->buffer, tty->buffer, tty->width*tty->height*2);
+  //memcpy(tty->alt->linelasts, tty->linelasts, tty->height);
+}
+
+static int read_param2(int *inbuf, int size, int *a, int *b) {
+  int buf[256];
+  int *c = buf, val=0, i;
+
+  memcpy(buf, inbuf, size);
+  buf[size] = 0; //null-terminate for convienience
+  
+  if (*buf == 0)
+    return 0;
+  
+  for (i=0; *c && i<2; i++, c++) {
+    while (*c && *c != ';') {
+      val = (val*10) + *c - '0';
+      c++;
+    }
+    
+    if (i)
+      *b = val;
+    else
+      *a = val;
+  }
+  
+  return i == 2;
 }
 
 static void tty_restore_alternate(TTYBuffer *tty) {
@@ -305,17 +335,18 @@ static int apply_esc_command(TTYBuffer *tty, unsigned char code) {
   
   if (is_dec) {
     short mode = code;
+    short code2;
     
     if (s4 != 0xff)
-      code = s4 + s3*10 + s2*100;
+      code2 = s4 + s3*10 + s2*100;
     else if (s3 != 0xff)
-      code = s3 + s2*10;
+      code2 = s3 + s2*10;
     else
-      code = s2;
+      code2 = s2;
     
     e9printf("DEC CODE: %d, %d %d %d \n", code, s1, s2, s3);
     
-    switch (code) {
+    switch (code2) {
       case 25:
         if (mode == 'l')
           tty_hide_cursor(tty);
@@ -323,6 +354,7 @@ static int apply_esc_command(TTYBuffer *tty, unsigned char code) {
           tty_show_cursor(tty);
         break;
       case 47:
+      case 1047:
         if (mode == 'l') {
           tty_restore_alternate(tty);
         } else {
@@ -361,6 +393,21 @@ static int apply_esc_command(TTYBuffer *tty, unsigned char code) {
         tty->buffer[idx] = make_vgaentry(' ', tty->fg, tty->bg);
       }
 
+      break;
+    }
+    case 'H': { //set cursor position
+      int x=0, y=0;
+      
+      //no parameters: set to 0, 0
+      if (tty->escape_statelen == 1) {
+        tty->cursorx = tty->cursory = 0;
+        break;
+      }
+      
+      if (read_param2(tty->escape_state, tty->escape_statelen, &y, &x)) {
+        tty->cursorx = x-1 + tty->scrolly + tty->scrolly_off;
+        tty->cursory = y-1 + tty->scrolly + tty->scrolly_off;
+      }
       break;
     }
     case 'J': //clear whole screen
@@ -448,7 +495,7 @@ int tty_do_escape(TTYBuffer *tty, unsigned char code) {
     tty->escape_mode = 0;
     return 0;
   }
-
+  
   tty->escape_mode = code;
   tty->escape_state[tty->escape_statelen++] = code;
 
@@ -656,8 +703,8 @@ int terminal_move_cursor(int delta) {
 
 /************ debug stuff *****************/
 
-static volatile unsigned int debug_entries[32] = {0,};
-static volatile unsigned int debug_backup[32] = {0,};
+static volatile unsigned int debug_entries[255] = {0,};
+static volatile unsigned int debug_backup[255] = {0,};
 
 static unsigned char hexline[] = "0123456789ABCDEF";
 
@@ -690,7 +737,7 @@ void terminal_set_idebug(int basechannel, int len, int n, int clr) {
 }
 
 void terminal_set_debug(unsigned int channel, unsigned int chr, unsigned int clr) {
-  tty.buffer_out[5+channel] = debug_entries[channel] = make_vgaentry(chr, clr, 0);
+  tty.buffer_out[5+(channel&255)] = debug_entries[channel&255] = make_vgaentry((chr&255), (clr&15), 0);
 }
 
 

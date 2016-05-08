@@ -243,7 +243,9 @@ int Vi_Loop(ViState *vi) {
   //setbuf(stdin, NULL);
   
   printf("\33_");
-  printf("\33[6n");
+  
+  //Report cursor position
+  //printf("\33[6n");
   
   fflush(stdout);
   fflush(stdin);

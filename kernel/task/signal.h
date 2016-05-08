@@ -4,7 +4,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-typedef voltaile int sig_atomic_t;
+typedef volatile int sig_atomic_t;
 typedef unsigned int sigset_t;
 //typedef int pid_t
 
@@ -20,13 +20,6 @@ typedef struct sigevent {
   int (*sigev_notify_function)(union sigval val);
 } sigevent;
 
-typedef struct sigaction {
-  void (*sa_handler)(int signal);
-  sigset_t sa_mask;
-  int sa_flags;
-  void (*sa_sigaction)(int signal, siginfo_t *info, void *data);
-} sigaction;
-
 typedef struct siginfo_t {
   int si_signo, si_code, si_errno;
   int si_pid, si_uid; //set by SIGCHLD
@@ -36,10 +29,25 @@ typedef struct siginfo_t {
   union sigval si_value;
 } siginfo_t;
 
+typedef struct sigaction {
+  void (*sa_handler)(int signal);
+  sigset_t sa_mask;
+  int sa_flags;
+  void (*sa_sigaction)(int signal, siginfo_t *info, void *data);
+} sigaction;
+
+//first part should match CPUState in task.h
 typedef struct mcontext_t {
-  uintptr_t eax, ebx, ecx, edx;
-  uintptr_t ebp, esp, eip, edi, esi;
-  uintptr_t eflags;
+  uintptr_t eflags; //0
+  uintptr_t edi;    //1
+  uintptr_t esi;    //2
+  uintptr_t ebp;    //3
+  void *esp;        //4
+  uintptr_t ebx;    //5
+  uintptr_t edx;    //6
+  uintptr_t ecx;    //7
+  uintptr_t eax;    //8
+  void *eip;        //9
   
   unsigned char fpu[256];
 } mcontext_t;
@@ -49,10 +57,9 @@ typedef struct stack_t {
   size_t ss_size;
   int ss_flags;
 } stack_t;
-typedef uintptr_t stack_t;
 
 typedef struct ucontext_t {
-  ucontext_t *uc_link;
+  struct ucontext_t *uc_link;
   sigset_t uc_sigmask;
   stack_t uc_stack;
   mcontext_t uc_mcontext; //saved context
@@ -95,6 +102,9 @@ enum {
   SIGXCPU=(1<<26), //A termiate. means CPU time limit exceeded
   SIGXFSZ=(1<<27) //A terminate. means file size limit exceeded
 };
+#define TOTSIGNAL 28
+
+#define DEFAULT_SIGMASK (SIGURG|SIGCHLD)
 
 //#define SIGRTMIN
 //#define SIGRTMAX

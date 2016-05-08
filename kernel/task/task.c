@@ -11,6 +11,7 @@
 #include "rwlock.h"
 
 #include "process.h"
+#include "../exception.h"
 
 //#define TASK_DEBUG
 
@@ -35,17 +36,18 @@ volatile int k_totaltasks;
 unsigned long taskstacks[MAX_TASKS];
 volatile unsigned long k_tidbase;
 
+
 //used to set default task->sleep
 const unsigned int task_switch_granularity = 10;
 
 extern void __initMainTask();
 extern void *stack_top;
-static Task *task_get(int tid);
 
 void tasks_initialize() {
   krwlock_init(&tlock);
   
-  k_totaltasks = k_tidbase = 1;
+  k_totaltasks = 1;
+  k_tidbase = 1; //0 is reserved for freed tasks
   
   memset((void*)taskstacks, 0, sizeof(taskstacks));
   memset((void*)tasks, 0, sizeof(Task)*MAX_TASKS);
@@ -146,6 +148,71 @@ void free_stack(unsigned long stack) {
   }
 }
 
+void _old_on_exception(int code, int codedata, void *instruction, void *stack) {
+#if 0
+  e9printf("_on_exception called.  code: %d, codedata: %d, eip: %p, old stack: %p\n", code, codedata, instruction, stack);
+  e9printf("  eax: %x, ebx: %x, edx: %x\n", read_eax(), read_ebx(), read_edx());
+  e9printf("  ebp: %x, esp: %x, eip: %x\n\n", read_ebp(), read_esp(), get_eip());
+  
+  if (code == 0) {
+    //handle
+    unsigned char *inst = instruction;
+    
+    //skip prefixes
+    while (*inst == 0x66 || *inst == 0x67 || *inst == 0x0f)
+      inst++;
+    
+    e9printf("  inst: %x %x %x %x %x\n", inst[0], inst[1], inst[2], inst[3], inst[4]);
+    
+    switch (inst[0]) {
+      case 0xf7: {
+        int opsize = get_modrm_op_length(inst);
+        e9printf("  instruction size: %d\n", opsize);
+        inst += opsize;
+        e9printf("  final inst: %x %x %x %x %x\n", inst[0], inst[1], inst[2], inst[3], inst[4]);
+        break;
+      }
+      default:
+        e9printf("  unknown division instruction %x\n", inst[0]);
+        _exit(-1);
+        break;
+    }
+    
+    e9printf("  resuming. . .\n");
+    _exception_resume(inst, stack);
+    
+    //resume execution after division instruction
+    /*
+    asm(  "mfence\n\t"
+          "mov %0, %%eax\n\t"
+          "mov %1, %%esp\n\t"
+          "jmp %%eax"
+          ::"g"((uintptr_t)inst), "g"((uintptr_t)stack)
+        );
+    */
+  }
+  
+  _exit(-1);
+#endif
+}
+
+int task_set_signals(int tid, SignalInfo *signals) {
+  unsigned int state = safe_entry();
+  Task *task = task_from_tid(tid);
+  
+  if (!task) {
+    e9printf("task_set_signals: invalid tid %d\n", tid);
+    
+    safe_exit(state);
+    return -1;
+  }
+  
+  task->signals = signals;
+  
+  safe_exit(state);
+  return 0;
+}
+
 //*
 void task_cleanup(volatile Task *task, int retval) {
   task->finishcb(retval, task->tid, task->pid);
@@ -171,8 +238,16 @@ void task_cleanup(volatile Task *task, int retval) {
   if (iscurrent) {
     free_stack((unsigned long) task->stack);
     interrupts_enable();
+    if (CAN_YIELD) {
+      task_yield();
+    }
     
     while (1) { //wait for switch
+      e9printf("task_cleanup: zombie!\n");
+      
+      if (CAN_YIELD) {
+        task_yield();
+      }
     }
   } else {
     free_stack((unsigned long) task->stack);
@@ -186,7 +261,7 @@ void task_cleanup(volatile Task *task, int retval) {
 void task_destroy(int tid, int retval, int wait_if_inside) {
   interrupts_disable();
   
-  Task *task = task_get(tid);
+  Task *task = task_from_tid(tid);
   
   if (task && task->tid == tid && (task->flag & TASK_SCHEDULED)) {
     task->flag = TASK_DEAD;
@@ -244,7 +319,7 @@ void _task_cleanup() {
   interrupts_enable();
 }
 
-static Task *task_get(int tid) {
+Task *task_from_tid(int tid) {
   for (int i=0; i<MAX_TASKS; i++) {
     if (tasks[i].tid == tid) 
       return tasks + i;
@@ -398,11 +473,12 @@ volatile Task *get_next_task_timer() {
   return next;
 }
 
-int _thread_interrupt_proc(int argc, char **argv) {
+int task_interrupt(int tid, void (*func)(void));
+int _task_interrupt_proc(int argc, char **argv) {
   interrupts_disable();
   
   e9printf("interrupting thread!\n");
-  thread_interrupt(argc, (void*)argv);
+  task_interrupt(argc, (void*)argv);
   e9printf("done.\n");
   
   interrupts_enable();
@@ -411,19 +487,23 @@ int _thread_interrupt_proc(int argc, char **argv) {
 
 void *_thread_ctx_push(void *stack);
 
-int thread_interrupt(int tid, void (*func)(void)) {
-  interrupts_disable();
-  Task *task = task_get(tid);
+int task_interrupt(int tid, void (*func)(void)) {
+  unsigned int state = safe_entry();
+  
+  Task *task = task_from_tid(tid);
   
   if (!task) {
-    interrupts_enable();
+    safe_exit(state);
     return -1;
   }
   
   if (task == k_curtaskp) {
-    spawn_task(tid, (void*) func, _thread_interrupt_proc, NULL, (Process*) k_curtaskp->proc);
-    interrupts_enable();
-    task_yield();
+    e9printf("spawning thread interrupt task\n");
+    
+    spawn_task(tid, (void*) func, _task_interrupt_proc, NULL, (Process*) k_curtaskp->proc);
+    safe_exit(state);
+    
+    //don't yield, we might be in an irq or exception handler -> task_yield();
     
     return 0;
   }
@@ -431,8 +511,10 @@ int thread_interrupt(int tid, void (*func)(void)) {
   uintptr_t *stack = (uintptr_t*) task->head;
   uintptr_t eip = stack[11]; //XXX check me!
   
+  //stack--;
+  
   *--stack = eip;
-  *--stack = read_eflags() & ~(1<<9); //exclude interrupt flag
+  *--stack = read_eflags() | (1<<9); //make sure interrupts are enabled
   *--stack = 0x08;
   *--stack = (uintptr_t) func;
   
@@ -440,7 +522,11 @@ int thread_interrupt(int tid, void (*func)(void)) {
   
   task->head = stack;
   
-  interrupts_enable();
+  //XXX remove from scheduling queue
+  task->prev->next = task->next;
+  task->next->prev = task->prev;
+  
+  safe_exit(state);
   return 0;
 }
 
@@ -471,3 +557,50 @@ void next_task() {
   
   return;*/
 }
+
+void task_suspend(int tid) {
+  unsigned int state = safe_entry();
+  
+  Task *task = task_from_tid(tid);
+  if (!task) {
+    e9printf("task_suspend: invalid tid %d\n", tid);
+    
+    safe_exit(state);
+    return;
+  }
+  
+  if (!(task->flag & TASK_SUSPENDED)) {
+    task->prev->next = task->next;
+    task->next->prev = task->prev;
+  }
+  
+  task->flag |= TASK_SUSPENDED;
+  
+  safe_exit(state);
+}
+
+void task_unsuspend(int tid) {
+  unsigned int state = safe_entry();
+  
+  Task *task = task_from_tid(tid);
+  if (!task) {
+    e9printf("task_unsuspend: invalid tid %d\n", tid);
+    
+    safe_exit(state);
+    return;
+  }
+  
+  if (task->flag & TASK_SUSPENDED) {
+    task->flag &= ~TASK_SUSPENDED;
+    
+    k_curtaskp->next->prev = task;
+    
+    task->next = k_curtaskp->next;
+    task->prev = k_curtaskp;
+    
+    k_curtaskp->next = task;
+  }
+  
+  safe_exit(state);
+}
+

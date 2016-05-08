@@ -42,10 +42,20 @@ int test_console() {
   return 0;
 }
 
+static inline unsigned int read_esp(void)
+{
+    unsigned int val;
+    __asm__ volatile ( "mov %%esp, %0" : "=r"(val) );
+    return val;
+}
+
 int main(int argc, char **argv) {
   int ret;
   
   volatile int i = 1;
+  
+  uint32_t stack = read_esp();
+  e9printf("pre-div-by-zero stack: %x\n", stack);
   
   //test divide by zero
   i /= 0;

@@ -85,6 +85,60 @@ static int spawn_shell(FILE *stdout) {
   return 0;
 }
 
+/* map:
+    1 = ctrl
+    2 = shift
+    3 = ctrl + shift
+    4 = alt
+    5 = alt + ctrl
+    6 = shift + alt
+    7 = ctrl + shift + alt
+    8 = command
+    9 = command + ctrl
+   10 = command + shift
+   11 = command + shift + ctrl
+   12 = command + alt
+   13 = command + alt + ctrl
+   14 = command + alt + shift
+   15 = command + alt + shift + ctrl
+*/
+//map bitmask (with left/right distinctions stripper out) to terminal codes
+//   bitmask is calculated with equation: (!!(mod & KMOD_CTRL)) | (!!(mod & KMOD_SHIFT))<<1 | (!!(mod & KMOD_ALT))<<2 | (!!(mod & KMOD_COMMAND))<<3;
+int simplified_modifier_map[] = {
+  0, //0
+  5, //1
+  2, //2
+  6, //3
+  3, //4
+  7, //5
+  4, //6
+  8, //7
+  9, //8
+ 13, //9
+ 10, //10
+ 14, //11
+ 11, //12
+ 15, //13
+ 12, //14
+ 16, //15
+};
+
+int do_ctrl_chars(int ch) {
+  switch (ch) {
+    case 'd':
+    case 'D':
+      return 0x04;
+    case 's':
+    case 'S':
+      return 0x13;
+    case 'f':
+    case 'F':
+      return 0x06;
+    default:
+      return ch;
+  }
+}
+
 int kcli_main(int argc, char **argv) {
   e9printf("Started kcli_main\n");
   
@@ -145,6 +199,10 @@ int kcli_main(int argc, char **argv) {
     
     do {
       code = keyboard_poll();
+      int kmod = keyboard_get_modflag();
+      
+      if (code < 0)
+        break;
       
       if (!(code & 128)) {
         unsigned char ch = code & 127;
@@ -152,31 +210,74 @@ int kcli_main(int argc, char **argv) {
         if (keyboard_isprint(ch) || ch == '\r' || ch == '\n' || ch == '\t') {
           ch = keyboard_handle_case(ch);
           
-          e9printf("feed! %x\n", (int)ch);
-          fputc(ch, stdin);
+          e9printf("feed! ESC\n");
+          if (kmod & KMOD_ALT) {
+            fputc(27, stdin);
+          }
           
-          if (lmode & ECHO) {
-            fputc(ch, stdout);
+          //handle control characters
+          if (kmod && (kmod & KMOD_CTRL) == kmod) {
+            char ch2 = do_ctrl_chars(ch);
+            
+            fputc(ch2, stdin);
+
+            //if (isprint(ch) && (lmode & ECHO)) {
+              fprintf(stdout, "^%c", ch);
+            //}
+          } else {
+            e9printf("feed! %x\n", (int)ch);
+            fputc(ch, stdin);
+            
+            if (lmode & ECHO) {
+              fputc(ch, stdout);
+            }
           }
         } else {
+          char modbuf[16]={0};
+          
+          //calc modifier bitmask without left/right distinction
+          e9printf("kmod: %d\n", kmod);
+          
+          int mod = (!!(kmod & KMOD_CTRL)) | ((!!(kmod & KMOD_SHIFT))<<1) | (!!(kmod & KMOD_ALT))<<2 | (!!(kmod & KMOD_COMMAND))<<3;
+          mod = simplified_modifier_map[mod];
+          
+          if (mod == 0)
+            modbuf[0] = 0;
+          else
+            sprintf(modbuf, "1;%d", mod);
+          
           switch (ch) {
             case KEY_UP:
-              fprintf(stdin, "\33[A");
+              fprintf(stdin, "\33[%sA", modbuf);
               break;
             case KEY_DOWN:
-              fprintf(stdin, "\33[B");
+              fprintf(stdin, "\33[%sB", modbuf);
               break;
             case KEY_LEFT:
-              fprintf(stdin, "\33[D");
+              fprintf(stdin, "\33[%sD", modbuf);
               break;
             case KEY_RIGHT:
-              fprintf(stdin, "\33[C");
+              fprintf(stdin, "\33[%sC", modbuf);
+              break;
+            case KEY_PAGEUP:
+              fprintf(stdin, "\33[5~");
+              break;
+            case KEY_PAGEDOWN:
+              fprintf(stdin, "\33[6~");
               break;
             case KEY_BACKSPACE:
-              fprintf(stdin, "\b");
+              if (mod == 0) {
+                fprintf(stdin, "\x7F");
+              }
+              if (mod & 1) {
+                fprintf(stdin, "\b");
+              }
+              if (mod & 4) {
+                fprintf(stdin, "\33");
+              }
               break;
             case KEY_DELETE:
-              fprintf(stdin, "\33[C\b");
+              fprintf(stdin, "\33[%sC\b", modbuf);
               break;
           }
         }
