@@ -1,5 +1,11 @@
 *.o
 *.bin
+*.gz
+*.bz2
+*.zip
+*.xz
+*.tar
+*.exe
 ttytester/win32tester/Debug
 ttytester/win32tester/QR*
 ttytester/win32tester/ipch
